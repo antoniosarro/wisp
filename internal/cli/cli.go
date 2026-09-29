@@ -50,6 +50,7 @@ func run() error {
 	flag.BoolVar(&cfg.Cheapest, "cheapest", false, "OpenRouter only: look up the model's two cheapest zero-data-retention providers and route only to them, cheapest first, in case account preferences override the price sort")
 	flag.BoolVar(&cfg.SkipPermissions, "dangerously-skip-permissions", false, "skip permission prompts (dangerous)")
 	flag.BoolVar(&cfg.Vision, "vision", false, "show image files to the model even when the endpoint doesn't report image input")
+	flag.IntVar(&cfg.ContextWindow, "context-window", 0, "context window in tokens, overriding what the endpoint reports")
 	flag.IntVar(&cfg.MaxIterations, "max-iterations", 0, "provider round-trips per turn before wrapping up (default 100)")
 	flag.Func("price", "model price in US dollars per million tokens, as IN,OUT or IN,OUT,CACHED_IN, for cost estimates (default: $WISP_PRICE, else what the endpoint reports)", func(v string) (err error) {
 		cfg.Price, err = parsePrice(v)

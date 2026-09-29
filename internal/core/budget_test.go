@@ -1,0 +1,264 @@
+package core
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"strings"
+	"testing"
+
+	"github.com/antoniosarro/wisp/internal/model"
+	"github.com/antoniosarro/wisp/internal/testutil"
+	"github.com/antoniosarro/wisp/internal/tool"
+)
+
+// budgetProvider answers each request after the scripted errors with
+// "ok", reporting prompt tokens as ratio × the local estimate of what
+// was sent.
+type budgetProvider struct {
+	errs  []error
+	ratio float64
+	reqs  []model.Request
+}
+
+func (p *budgetProvider) Stream(_ context.Context, req model.Request) (<-chan model.Event, error) {
+	p.reqs = append(p.reqs, req)
+	if len(p.reqs) <= len(p.errs) {
+		return nil, p.errs[len(p.reqs)-1]
+	}
+	est := 0
+	for _, m := range req.Messages {
+		est += messageTokens(m)
+	}
+	ch := make(chan model.Event, 2)
+	ch <- model.Event{Kind: model.EventTextDelta, Text: "ok"}
+	ch <- model.Event{Kind: model.EventDone, Usage: &model.Usage{PromptTokens: int(float64(est) * p.ratio)}}
+	close(ch)
+	return ch, nil
+}
+
+// readHistory is a finished turn that read n files, each result big.
+func readHistory(n int, big string) []model.Message {
+	h := []model.Message{{Role: model.RoleUser, Content: "look"}}
+	for i := range n {
+		id := fmt.Sprint("r", i)
+		h = append(h,
+			model.Message{Role: model.RoleAssistant, ToolCalls: []model.ToolCall{{ID: id, Name: "read", Args: json.RawMessage(fmt.Sprintf(`{"path":"f%d.go"}`, i))}}},
+			model.Message{Role: model.RoleTool, ToolCallID: id, Content: big},
+		)
+	}
+	return append(h, model.Message{Role: model.RoleAssistant, Content: "seen"})
+}
+
+func TestMessageTokensCountsToolCallArguments(t *testing.T) {
+	body := strings.Repeat("func f() {}\n", 300)
+	args, _ := json.Marshal(map[string]string{"path": "f.go", "content": body})
+	bare := messageTokens(model.Message{Role: model.RoleAssistant})
+	withCall := messageTokens(model.Message{Role: model.RoleAssistant, ToolCalls: []model.ToolCall{{Name: "write", Args: args}}})
+	if withCall-bare < 1000 {
+		t.Errorf("a write of %d bytes adds %d tokens", len(body), withCall-bare)
+	}
+	withImage := messageTokens(model.Message{Role: model.RoleTool, Images: []model.Image{{MIME: "image/png"}}})
+	if withImage < imageTokens {
+		t.Errorf("an image counts %d tokens", withImage)
+	}
+}
+
+// A History replaced by another slice, even of the same length, must be
+// counted afresh; one that grew counts only what was added.
+func TestHistoryTokensFollowsHistory(t *testing.T) {
+	big := strings.Repeat("some line of source code\n", 100)
+	l := &Loop{History: readHistory(3, big)}
+	full := l.historyTokens()
+	l.History = readHistory(3, "x")
+	small := l.historyTokens()
+	if small >= full {
+		t.Errorf("replaced history counts %d tokens, the old one's %d", small, full)
+	}
+	extra := model.Message{Role: model.RoleUser, Content: big}
+	l.History = append(l.History, extra)
+	if got := l.historyTokens(); got != small+messageTokens(extra) {
+		t.Errorf("grown history counts %d, want %d + %d", got, small, messageTokens(extra))
+	}
+}
+
+// Dropping an earlier turn's image changes an old message: the count must
+// start over, not keep the image's cost.
+func TestDroppedImagesAreCountedAgain(t *testing.T) {
+	p := &testutil.ScriptedProvider{Turns: [][]model.Event{{{Kind: model.EventTextDelta, Text: "ok"}, {Kind: model.EventDone}}}}
+	l := &Loop{Provider: p, History: []model.Message{
+		{Role: model.RoleUser, Content: "look"},
+		{Role: model.RoleAssistant, ToolCalls: []model.ToolCall{{ID: "1", Name: "read"}}},
+		{Role: model.RoleTool, ToolCallID: "1", Content: "a.png", Images: []model.Image{{MIME: "image/png"}}},
+		{Role: model.RoleAssistant, Content: "a cat"},
+	}}
+	before := l.historyTokens()
+	if _, err := l.Run(context.Background(), "and now?"); err != nil {
+		t.Fatal(err)
+	}
+	if got := l.historyTokens(); got >= before {
+		t.Errorf("history %d tokens after dropping the image, %d before", got, before)
+	}
+}
+
+func TestCalibrate(t *testing.T) {
+	l := &Loop{}
+	if l.ratio() != 1 {
+		t.Fatalf("uncalibrated ratio = %v", l.ratio())
+	}
+	l.calibrate(1200, 1000)
+	if l.ratio() != 1.2 {
+		t.Errorf("first sample: ratio = %v, want 1.2", l.ratio())
+	}
+	l.calibrate(1000, 1000)
+	if want := 1.2 + ratioAlpha*(1-1.2); math.Abs(l.ratio()-want) > 1e-9 {
+		t.Errorf("second sample: ratio = %v, want %v", l.ratio(), want)
+	}
+	l.calibrate(0, 1000) // no usage: ignored
+	l.calibrate(9000, 1000)
+	if l.ratio() > ratioMax {
+		t.Errorf("ratio %v past the clamp", l.ratio())
+	}
+}
+
+// Each response's reported prompt size calibrates the estimates.
+func TestRunCalibrates(t *testing.T) {
+	p := &budgetProvider{ratio: 1.3}
+	l := &Loop{Provider: p, System: "be brief"}
+	if _, err := l.Run(context.Background(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(l.ratio()-1.3) > 0.05 {
+		t.Errorf("ratio = %v after one request, want about 1.3", l.ratio())
+	}
+}
+
+func TestHistoryBudget(t *testing.T) {
+	system := strings.Repeat("word ", 1000)
+	l := &Loop{System: system}
+	if got := l.historyBudget(); got != 0 {
+		t.Errorf("unknown window: budget = %d, want 0", got)
+	}
+	l.ContextWindow = 16384
+	fixed := l.fixedTokens()
+	if got, want := l.historyBudget(), 16384-4096-fixed; got != want {
+		t.Errorf("16K window: budget = %d, want %d", got, want)
+	}
+	l.MaxOutput = 2048
+	if got, want := l.historyBudget(), 16384-2048-fixed; got != want {
+		t.Errorf("2K max output: budget = %d, want %d", got, want)
+	}
+	l.ContextWindow = 1000
+	if got := l.historyBudget(); got != 1 {
+		t.Errorf("window smaller than the fixed cost: budget = %d, want 1", got)
+	}
+}
+
+func TestProjectionUsesCalibratedRatio(t *testing.T) {
+	l := &Loop{History: readHistory(5, strings.Repeat("some line of source code\n", 100))}
+	local := l.historyTokens()
+	l.calibrate(int(float64(l.fixedTokens()+local)*1.4), l.fixedTokens()+local)
+	if got, want := l.projectedHistory(), int(float64(local)*1.4); got != want {
+		t.Errorf("projected history = %d, want the estimate %d scaled to %d", got, local, want)
+	}
+}
+
+func TestWindowFromError(t *testing.T) {
+	for msg, want := range map[string]int{
+		"400 Bad Request: This model's maximum context length is 32768 tokens. However, you requested 33000 tokens":                                          32768,
+		`400 Bad Request: {"error":{"message":"request (17000 tokens) exceeds the available context size (16384 tokens), try increasing it","n_ctx":16384}}`: 16384,
+		`400: {"n_prompt_tokens":9000,"n_ctx": 8192}`: 8192,
+		"400: context length exceeded":                0,
+	} {
+		if got := windowFromError(errors.New(msg)); got != want {
+			t.Errorf("windowFromError(%q) = %d, want %d", msg, got, want)
+		}
+	}
+}
+
+// Until masking exists, a rejected request fails the turn, but the window
+// the server states is kept, so later results are clipped to it.
+func TestOverflowLearnsWindow(t *testing.T) {
+	overflow := fmt.Errorf("400: This model's maximum context length is 8192 tokens: %w", model.ErrContextOverflow)
+	p := &budgetProvider{ratio: 1, errs: []error{overflow}}
+	l := &Loop{Provider: p}
+
+	_, err := l.Run(context.Background(), "next")
+	if !errors.Is(err, model.ErrContextOverflow) || !strings.Contains(err.Error(), "no longer fits") {
+		t.Fatalf("Run = %v, want the overflow, explained", err)
+	}
+	if l.ContextWindow != 8192 {
+		t.Errorf("window = %d, want 8192 from the error", l.ContextWindow)
+	}
+}
+
+// bigTool returns n lines of output.
+type bigTool struct{ n int }
+
+func (bigTool) Schema() model.ToolSchema { return model.ToolSchema{Name: "big"} }
+func (bigTool) Risky() bool              { return false }
+func (b bigTool) Run(context.Context, json.RawMessage) (tool.Result, error) {
+	return tool.Result{Content: strings.Repeat("some line of output\n", b.n)}, nil
+}
+
+// One tool result can't take more than resultPct of the budget: past it,
+// it keeps its head and tail.
+func TestToolResultsFitTheBudget(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir()) // Clip saves the full output there
+	p := &testutil.ScriptedProvider{Turns: [][]model.Event{
+		{{Kind: model.EventToolCall, ToolCall: &model.ToolCall{ID: "c", Name: "big", Args: json.RawMessage(`{}`)}}, {Kind: model.EventDone}},
+		{{Kind: model.EventTextDelta, Text: "done"}, {Kind: model.EventDone}},
+	}}
+	l := &Loop{Provider: p, Tools: tool.NewRegistry(bigTool{n: 3000}), ContextWindow: 16384}
+	if _, err := l.Run(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	result := l.History[2].Content
+	limit := l.historyBudget() * resultPct / 100
+	if got := messageTokens(model.Message{Content: result}); got > limit+100 {
+		t.Errorf("result is %d tokens, want about the limit %d", got, limit)
+	}
+	if !strings.Contains(result, "bytes omitted") || !strings.HasPrefix(result, "some line of output") {
+		t.Errorf("clipped result lacks its head or the note: %.80q", result)
+	}
+
+	// With the window unknown, nothing is clipped here: tools cap their own
+	// output.
+	if got := (&Loop{}).fitResult(strings.Repeat("x", 100_000)); len(got) != 100_000 {
+		t.Errorf("unknown window: result cut to %d bytes", len(got))
+	}
+}
+
+func TestContextUsageBreakdown(t *testing.T) {
+	system := "You are wisp.\n\n# Environment\n- Date: today\n\n# Project instructions (AGENTS.md)\n# Style\nUse tabs.\n\n# MCP servers\nConnected: github."
+	prompt, project, mcp := systemSections(system)
+	if !strings.HasSuffix(prompt, "- Date: today\n") || !strings.HasPrefix(project, "\n# Project instructions") || !strings.Contains(project, "# Style") || !strings.HasPrefix(mcp, "\n# MCP servers") {
+		t.Fatalf("sections = %q | %q | %q", prompt, project, mcp)
+	}
+
+	l := &Loop{System: system, ContextWindow: 16384, Tools: tool.NewRegistry(bigTool{}), History: readHistory(3, "x")}
+	c := l.ContextUsage()
+	if c.Prompt == 0 || c.Project == 0 || c.MCPPrompt == 0 || c.Tools["big"] == 0 || c.Fixed != c.Prompt+c.Project+c.MCPPrompt+c.Tools["big"] {
+		t.Errorf("fixed %d != prompt %d + project %d + mcp %d + tools %v", c.Fixed, c.Prompt, c.Project, c.MCPPrompt, c.Tools)
+	}
+	if c.Messages != c.History || c.History == 0 || c.Reserve != 4096 || c.Budget != 16384-4096-c.Fixed {
+		t.Errorf("messages %d, history %d, reserve %d, budget %d", c.Messages, c.History, c.Reserve, c.Budget)
+	}
+	if (&Loop{}).ContextUsage().Reserve != 0 {
+		t.Error("unknown window: a reserve was reported")
+	}
+}
+
+func TestStatsReportTheRequestBreakdown(t *testing.T) {
+	var got StepStats
+	l := &Loop{Provider: &budgetProvider{ratio: 1}, System: "be brief", Tools: tool.NewRegistry(bigTool{}), ContextWindow: 16384,
+		OnStats: func(s StepStats) { got = s }}
+	if _, err := l.Run(context.Background(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if got.SystemTokensEst == 0 || got.HistoryTokensEst == 0 || got.ToolDefTokensEst == 0 || got.Context.Window != 16384 {
+		t.Errorf("stats = %+v, want the request's parts and the budget", got)
+	}
+}

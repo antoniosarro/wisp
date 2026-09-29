@@ -58,8 +58,10 @@ type Loop struct {
 	SessionID string
 
 	MaxIterations int           // provider round-trips per Run; <= 0 uses the default
-	NoTools       bool          // the model can't call tools: send none
+	ContextWindow int           // model's window in tokens; 0 if unknown
+	MaxOutput     int           // model's output-token cap; 0 if unknown
 	Price         model.Pricing // the model's list price, for requests the endpoint doesn't bill
+	NoTools       bool          // the model can't call tools: send none
 
 	// FinishCheck, if set, runs when the model gives a final answer, with
 	// this turn's messages. A non-empty result is sent back as a reminder
@@ -70,8 +72,9 @@ type Loop struct {
 	OnToolResult func(model.ToolCall, tool.Result, error) // each call as it finishes, skipped ones included
 	OnStats      func(StepStats)                          // after each request, when its stream ends
 
-	stats StepStats       // session-cumulative totals
-	ran   map[string]bool // read-only calls run this turn since the last risky one (callKey)
+	stats  StepStats       // session-cumulative totals
+	ran    map[string]bool // read-only calls run this turn since the last risky one (callKey)
+	tokens tokenCache      // local token estimates (budget.go)
 }
 
 // Run appends userInput as a user turn and drives the provider/tool loop
@@ -98,7 +101,7 @@ func (l *Loop) Run(ctx context.Context, userInput string) (answer string, err er
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		text, toolCalls, truncated, err := l.step(ctx, "")
+		text, toolCalls, truncated, err := l.stepFitting(ctx, "")
 		if err != nil {
 			return "", err
 		}
@@ -143,7 +146,7 @@ func (l *Loop) wrapUp(ctx context.Context, maxIter int) (string, error) {
 	if err := l.appendReminder(wrapUpReminder); err != nil {
 		return "", err
 	}
-	text, _, _, err := l.step(ctx, "none")
+	text, _, _, err := l.stepFitting(ctx, "none")
 	if err != nil {
 		return "", errors.Join(limitErr, err)
 	}
@@ -207,6 +210,7 @@ func (l *Loop) dropImages() {
 		if msg := &l.History[i]; len(msg.Images) > 0 {
 			msg.Images = nil
 			msg.Content += " [image no longer attached; read the file again to see it]"
+			l.tokens.counted = 0 // an earlier message changed: count again
 		}
 	}
 }
@@ -232,12 +236,18 @@ func (l *Loop) Messages() []model.Message {
 	return append(msgs, l.History...)
 }
 
-// requestTools is the tool list a request sends.
-func (l *Loop) requestTools() []model.ToolSchema {
-	if l.Tools == nil || l.NoTools {
-		return nil
+// stepFitting runs step. When the backend rejects the request as too
+// long, it learns the window from the error if the server states it, so
+// later tool results are clipped to fit.
+func (l *Loop) stepFitting(ctx context.Context, toolChoice string) (string, []model.ToolCall, bool, error) {
+	text, calls, truncated, err := l.step(ctx, toolChoice)
+	if errors.Is(err, model.ErrContextOverflow) {
+		if window := windowFromError(err); window > 0 {
+			l.ContextWindow = window
+		}
+		err = fmt.Errorf("%w; the conversation no longer fits, start a new session", err)
 	}
-	return l.Tools.Schemas()
+	return text, calls, truncated, err
 }
 
 // step streams one provider response and returns its answer text, tool
@@ -288,6 +298,9 @@ func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model
 		return "", nil, false, err
 	}
 
+	if usage != nil {
+		l.calibrate(usage.PromptTokens, l.fixedTokens()+l.historyTokens())
+	}
 	l.recordStats(response{
 		reasoning: reasoning.String(),
 		answer:    text.String(),
@@ -347,7 +360,7 @@ func (l *Loop) dispatchAndAppend(ctx context.Context, toolCalls []model.ToolCall
 		}
 		if err := l.appendAndPersist(model.Message{
 			Role:       model.RoleTool,
-			Content:    content,
+			Content:    l.fitResult(content),
 			ToolCallID: r.ToolCall.ID,
 			IsError:    r.Err != nil || r.Result.IsError,
 			Images:     images,

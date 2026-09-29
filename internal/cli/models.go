@@ -88,6 +88,9 @@ func describeModel(ctx context.Context, catalog model.Catalog, id string) model.
 // override applies the flags that correct what the endpoint reports; they
 // hold for every model used in the run.
 func (cfg Config) override(info model.Info) model.Info {
+	if cfg.ContextWindow > 0 {
+		info.ContextWindow = cfg.ContextWindow
+	}
 	if cfg.Vision {
 		info.Vision = model.Supported
 	}
@@ -117,6 +120,7 @@ func parsePrice(s string) (model.Pricing, error) {
 
 // applyModel configures the loop and the read tool for a model.
 func applyModel(loop *core.Loop, vision *atomic.Bool, info model.Info) {
+	loop.ContextWindow, loop.MaxOutput = info.ContextWindow, info.MaxOutput
 	loop.Price = info.Price
 	loop.NoTools = info.Tools == model.Unsupported
 	vision.Store(info.Vision == model.Supported)

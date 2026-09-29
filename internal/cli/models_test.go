@@ -57,15 +57,15 @@ func TestParsePrice(t *testing.T) {
 
 func TestOverrideAndApplyModel(t *testing.T) {
 	price := model.Pricing{Known: true, Input: 1, Output: 2}
-	cfg := Config{Vision: true, Price: price}
-	info := cfg.override(model.Info{ID: "m", Vision: model.Unsupported, Tools: model.Unsupported, Price: model.Pricing{Known: true, Input: 9}})
-	if info.Vision != model.Supported || info.Price != price {
+	cfg := Config{Vision: true, Price: price, ContextWindow: 8192}
+	info := cfg.override(model.Info{ID: "m", Vision: model.Unsupported, Tools: model.Unsupported, Price: model.Pricing{Known: true, Input: 9}, ContextWindow: 131072, MaxOutput: 4096})
+	if info.Vision != model.Supported || info.Price != price || info.ContextWindow != 8192 {
 		t.Fatalf("override = %+v, want the flags to win", info)
 	}
 
 	loop, vision := &core.Loop{}, new(atomic.Bool)
 	applyModel(loop, vision, info)
-	if !vision.Load() || !loop.NoTools || loop.Price != price {
-		t.Errorf("applyModel: vision %v, NoTools %v, Price %+v", vision.Load(), loop.NoTools, loop.Price)
+	if !vision.Load() || !loop.NoTools || loop.Price != price || loop.ContextWindow != 8192 || loop.MaxOutput != 4096 {
+		t.Errorf("applyModel: vision %v, NoTools %v, Price %+v, window %d, max output %d", vision.Load(), loop.NoTools, loop.Price, loop.ContextWindow, loop.MaxOutput)
 	}
 }

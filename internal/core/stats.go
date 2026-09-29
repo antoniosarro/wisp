@@ -27,6 +27,11 @@ type StepStats struct {
 	SessionCachedTokens     int
 	SessionCost             float64 // billed costs reported so far
 
+	// Request breakdown.
+	SystemTokensEst  int
+	HistoryTokensEst int
+	ToolDefTokensEst int
+
 	// Response breakdown.
 	ReasoningTokensEst int
 	AnswerTokensEst    int
@@ -35,6 +40,28 @@ type StepStats struct {
 	Duration     time.Duration // from sending the request to the end of the stream
 	TokensPerSec float64       // completion tokens over Duration; 0 without usage
 	RequestCount int           // requests this session, including this one
+
+	Context ContextStats // the budget after this step
+}
+
+// ContextStats is the context budget as the loop sees it, in estimated
+// server tokens (local estimates times the calibration ratio). A zero
+// Window means the window is unknown.
+type ContextStats struct {
+	Window  int     `json:"window"`
+	Fixed   int     `json:"fixed"`   // system prompt and tool definitions
+	Budget  int     `json:"budget"`  // what history may use
+	History int     `json:"history"` // what history uses
+	Ratio   float64 `json:"ratio"`   // server tokens per local estimate token
+
+	// Where the tokens go. Fixed is Prompt, Project, MCPPrompt, and the
+	// tools; History is Messages.
+	Prompt    int            `json:"prompt"`     // the system prompt's own text
+	Project   int            `json:"project"`    // project instructions (AGENTS.md)
+	MCPPrompt int            `json:"mcp_prompt"` // the system prompt's MCP servers section
+	Tools     map[string]int `json:"tools"`      // each tool definition, by name
+	Messages  int            `json:"messages"`   // the messages sent
+	Reserve   int            `json:"reserve"`    // room kept for the reply; 0 when the window is unknown
 }
 
 // CacheHitRate is the share of prompt tokens served from cache, as a
@@ -74,7 +101,12 @@ func (l *Loop) recordStats(r response) {
 		l.addUsage(*r.usage)
 	}
 
+	l.fixedTokens() // fills the system and tool-definition estimates below
 	snapshot := StepStats{
+		Context:                 l.contextStats(),
+		SystemTokensEst:         l.tokens.systemTokens,
+		HistoryTokensEst:        l.historyTokens(),
+		ToolDefTokensEst:        l.tokens.toolDefs,
 		SessionPromptTokens:     l.stats.SessionPromptTokens,
 		SessionCompletionTokens: l.stats.SessionCompletionTokens,
 		SessionCachedTokens:     l.stats.SessionCachedTokens,

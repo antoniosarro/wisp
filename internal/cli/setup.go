@@ -26,6 +26,7 @@ type Config struct {
 	Provider        string // OpenRouter upstream provider to pin, from --provider
 	Cheapest        bool   // OpenRouter: route to the model's two cheapest providers, from --cheapest
 	SkipPermissions bool
+	ContextWindow   int // from --context-window; overrides what the endpoint reports
 	MaxIterations   int
 	Vision          bool
 	Price           model.Pricing // from --price; overrides what the endpoint reports

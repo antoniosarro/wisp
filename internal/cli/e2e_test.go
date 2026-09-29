@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rogpeppe/go-internal/testscript"
 
 	"github.com/antoniosarro/wisp/internal/session"
@@ -20,7 +22,8 @@ import (
 // scripts' "exec wisp" by re-running this binary under that name.
 func TestMain(m *testing.M) {
 	testscript.Main(m, map[string]func(){
-		"wisp": func() { os.Exit(Main()) },
+		"wisp":     func() { os.Exit(Main()) },
+		"fake-mcp": fakeMCP,
 	})
 }
 
@@ -131,4 +134,23 @@ func cmdSession(ts *testscript.TestScript, neg bool, args []string) {
 	default:
 		ts.Fatalf("usage: session id | session history")
 	}
+}
+
+// fakeMCP is a stdio MCP server for scenarios, run as the fake-mcp
+// command: a read-only "balance" tool and an unannotated, so destructive,
+// "close_account".
+func fakeMCP() {
+	s := sdk.NewServer(&sdk.Implementation{Name: "fake-mcp"}, nil)
+	type account struct {
+		Account string `json:"account"`
+	}
+	sdk.AddTool(s, &sdk.Tool{Name: "balance", Description: "Current balance of an account.", Annotations: &sdk.ToolAnnotations{ReadOnlyHint: true}},
+		func(_ context.Context, _ *sdk.CallToolRequest, in account) (*sdk.CallToolResult, any, error) {
+			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: in.Account + ": 42.00 EUR"}}}, nil, nil
+		})
+	sdk.AddTool(s, &sdk.Tool{Name: "close_account", Description: "Close an account."},
+		func(_ context.Context, _ *sdk.CallToolRequest, in account) (*sdk.CallToolResult, any, error) {
+			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: in.Account + " closed"}}}, nil, nil
+		})
+	_ = s.Run(context.Background(), &sdk.StdioTransport{})
 }

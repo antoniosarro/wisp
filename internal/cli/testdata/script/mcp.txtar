@@ -1,0 +1,33 @@
+# An MCP server from the global mcp.json: the model finds a tool through
+# tool_search, calls it through mcp_call, and the tool list never changes.
+# A destructive tool still asks with --dangerously-skip-permissions.
+
+mkdir .config/wisp
+cp mcp.json .config/wisp/mcp.json
+fakemodel model.yaml
+stdin answers.txt
+exec wisp --dangerously-skip-permissions 'what is my balance, then close it'
+stderr 'MCP: budget \(2 tools\)'
+stdout 'wisp wants to run: mcp__budget__close_account'
+stdout 'Balance 42.00 EUR; closing was denied\.'
+grep 'mcp__budget__balance: Current balance of an account' requests.jsonl
+grep 'main: 42.00 EUR' requests.jsonl
+grep 'denied by user' requests.jsonl
+! grep 'main closed' requests.jsonl
+requests count 4
+requests valid
+
+-- answers.txt --
+n
+-- mcp.json --
+{"mcpServers": {"budget": {"command": "fake-mcp"}}}
+-- model.yaml --
+rules:
+  - when: {role: user}
+    reply: {tool_calls: [{name: tool_search, args: {query: "balance"}}]}
+  - when: {contains: "### mcp__budget__balance"}
+    reply: {tool_calls: [{name: mcp_call, args: {name: mcp__budget__balance, arguments: {account: main}}}]}
+  - when: {contains: "42.00 EUR"}
+    reply: {tool_calls: [{name: mcp_call, args: {name: close_account, arguments: {account: main}}}]}
+  - when: {contains: denied by user}
+    reply: {text: "Balance 42.00 EUR; closing was denied."}

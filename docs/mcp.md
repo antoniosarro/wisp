@@ -29,7 +29,9 @@ be copied across:
 ```
 
 - **Secrets.** `${VAR}` in `args`, `env`, `url`, and `headers` expands from
-  the environment, so secrets stay out of the file.
+  the environment, so secrets stay out of the file. A remote server's
+  `headers` are sent to its own host only, so a redirect elsewhere never
+  carries its token along.
 - **Turning one off.** `"disabled": true` keeps an entry without starting
   it, e.g. to turn a global server off for one project.
 - **Environment.** stdio servers run with wisp's environment minus

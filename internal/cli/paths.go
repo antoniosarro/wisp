@@ -24,6 +24,21 @@ func xdgPath(env, fallback string, elem ...string) (string, error) {
 	return filepath.Join(append([]string{dir, "wisp"}, elem...)...), nil
 }
 
+// configPath is under ~/.config/wisp, or "" when there is no config dir.
+func configPath(elem ...string) string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(append([]string{dir, "wisp"}, elem...)...)
+}
+
+// projectPath is under workDir's .wisp, where a project overrides the
+// global config.
+func projectPath(workDir string, elem ...string) string {
+	return filepath.Join(append([]string{workDir, ".wisp"}, elem...)...)
+}
+
 // statePath is $XDG_STATE_HOME/wisp/state.json, or ~/.local/state/..., or
 // "" without a home directory.
 func statePath() string {

@@ -1,0 +1,12 @@
+# A 429 before the stream starts is retried; the turn then succeeds.
+
+fakemodel model.yaml
+exec wisp 'hi'
+stdout 'ok after retry'
+requests count 2
+requests valid
+
+-- model.yaml --
+rules:
+  - reply: {status: 429, error: rate limited}
+  - reply: {text: ok after retry}

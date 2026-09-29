@@ -1,0 +1,29 @@
+# The model runs a failing check, fixes the file, reruns the check, and
+# answers. The only served model is chosen without --model.
+
+fakemodel model.yaml
+exec wisp --dangerously-skip-permissions 'make the check pass'
+stdout 'Fixed: the check passes\.'
+cmp greet.txt want.txt
+requests count 4
+requests valid
+grep '"role":"tool","content":"FAIL' requests.jsonl
+grep 'replaced 1 occurrence\(s\) in greet.txt' requests.jsonl
+
+-- model.yaml --
+models: [{id: fake, max_model_len: 32768}]
+rules:
+  - when: {role: user}
+    reply: {tool_calls: [{name: bash, args: {command: sh check.sh}}]}
+  - when: {contains: FAIL}
+    reply: {tool_calls: [{name: edit, args: {path: greet.txt, old_string: hello wrld, new_string: hello world}}]}
+  - when: {contains: replaced}
+    reply: {tool_calls: [{name: bash, args: {command: sh check.sh}}]}
+  - when: {contains: PASS}
+    reply: {text: "Fixed: the check passes.", chunk: 4}
+-- check.sh --
+grep -q 'hello world' greet.txt && echo PASS || { echo FAIL; exit 1; }
+-- greet.txt --
+hello wrld
+-- want.txt --
+hello world

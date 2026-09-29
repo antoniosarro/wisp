@@ -1,0 +1,6 @@
+# -h lists the flags without printing the API key from the environment.
+
+env WISP_API_KEY=sk-secret-for-test
+exec wisp -h
+stderr 'api-key'
+! stderr 'sk-secret-for-test'

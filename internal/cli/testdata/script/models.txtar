@@ -1,0 +1,32 @@
+# Model discovery: an ambiguous endpoint lists its models, --models
+# describes them, --model picks one, and --price adds a cost estimate.
+
+fakemodel model.yaml
+! exec wisp 'hi'
+stderr 'serves several models; choose one'
+stderr 'small  \(8K context'
+
+exec wisp --models
+stdout 'big  \(128K context · tools · \$0\.27/\$1\.10 per 1M\)'
+stdout 'small  \(8K context\)'
+
+exec wisp --model big 'hi'
+stdout 'hello from big'
+grep '"model":"big"' requests.jsonl
+stderr 'est\. cost \$'
+
+exec wisp --model big --price 3,15 'priced'
+stderr 'est\. cost \$0\.0'
+
+-- model.yaml --
+models:
+  - id: small
+    max_model_len: 8192
+  - id: big
+    context_length: 131072
+    supported_parameters: [tools]
+    pricing: {prompt: "0.00000027", completion: "0.0000011"}
+rules:
+  - when: {model: big}
+    repeat: true
+    reply: {text: hello from big}

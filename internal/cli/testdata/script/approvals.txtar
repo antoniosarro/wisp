@@ -1,0 +1,24 @@
+# Risky calls ask on the terminal: the first is allowed, the second
+# denied, and the model is told it was denied.
+
+fakemodel model.yaml
+stdin answers.txt
+exec wisp 'run two commands'
+stdout 'wisp wants to run: bash'
+stdout 'Understood, the second command was denied\.'
+exists one.txt
+! exists two.txt
+grep 'denied by user' requests.jsonl
+requests valid
+
+-- answers.txt --
+y
+n
+-- model.yaml --
+rules:
+  - when: {role: user}
+    reply: {tool_calls: [{name: bash, args: {command: touch one.txt}}]}
+  - when: {role: tool, contains: ""}
+    reply: {tool_calls: [{name: bash, args: {command: touch two.txt}}]}
+  - when: {contains: denied by user}
+    reply: {text: "Understood, the second command was denied."}

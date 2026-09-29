@@ -61,6 +61,9 @@ func run() error {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	listSessions := flag.Bool("sessions", false, "list recent sessions in this working directory and exit")
 	listModels := flag.Bool("models", false, "list the endpoint's models and what it reports about them, then exit")
+	trace := flag.Bool("trace", false, "while wisp runs, serve a web page with all sessions, this directory's first, as live timelines of turns, requests, and tool calls")
+	traceOnly := flag.Bool("trace-only", false, "serve the trace page for all sessions and nothing else; needs no model")
+	traceAddr := flag.String("trace-addr", "127.0.0.1:7777", "address for --trace and --trace-only (a free port if taken); keep it on localhost, the page shows whole sessions")
 	flag.Usage = func() {
 		_, _ = fmt.Fprint(flag.CommandLine.Output(), "usage: wisp [flags] prompt...\n\n")
 		flag.PrintDefaults()
@@ -89,6 +92,17 @@ func run() error {
 	// tool results before exit.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
+
+	if *traceOnly {
+		return serveTrace(ctx, *traceAddr)
+	}
+	if *trace {
+		url, err := startTrace(ctx, *traceAddr)
+		if err != nil {
+			return fmt.Errorf("--trace: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "wisp: trace at %s\n", url)
+	}
 
 	provider := newProvider(cfg)
 	if *listModels {

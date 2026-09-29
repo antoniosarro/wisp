@@ -1,0 +1,1008 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wisp trace</title>
+<style>
+:root {
+  --bg: #fafafa; --surface: #ffffff; --fg: #18181b; --muted: #71717a; --faint: #a1a1aa;
+  --border: #e4e4e7; --line: #f0f0f2; --hover: #f4f4f5; --select: #eef2ff; --accent: #6366f1;
+  --turn: #8b5cf6; --request: #3b82f6; --tool: #10b981; --approval: #f59e0b;
+  --mcp: #06b6d4; --connect: #a1a1aa; --error: #ef4444; --ok: #10b981;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Inter", sans-serif;
+  --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius: 8px;
+  --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4; --c6: #008300;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c0c0f; --surface: #131317; --fg: #ececf1; --muted: #8e8e9a; --faint: #5c5c68;
+    --border: #26262e; --line: #1b1b21; --hover: #1a1a20; --select: #1f1d3a; --accent: #818cf8;
+    --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181; --c6: #008300;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c0c0f; --surface: #131317; --fg: #ececf1; --muted: #8e8e9a; --faint: #5c5c68;
+  --border: #26262e; --line: #1b1b21; --hover: #1a1a20; --select: #1f1d3a; --accent: #818cf8;
+  --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181; --c6: #008300;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+button { font: inherit; font-size: 13px; color: var(--fg); background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button:hover { background: var(--hover); }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+.muted { color: var(--muted); }
+
+/* layout: the page never scrolls, only the lists inside it do */
+.app { --side-w: 300px; --detail-w: 440px; display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); height: 100%; }
+.app.with-detail { grid-template-columns: var(--side-w) minmax(0, 1fr) var(--detail-w); }
+aside, #view { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+#view { display: flex; flex-direction: column; }
+#head, #stats, #ctx, #controls { flex: none; }
+/* the handles sit on the pane borders, over the middle column's gutter,
+   so they never cover a scrollbar */
+.app { position: relative; }
+.resizer { position: absolute; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; touch-action: none; outline: none; }
+#rz-side { left: calc(var(--side-w) - 1px); }
+#rz-detail { right: calc(var(--detail-w) - 1px); display: none; }
+.app.with-detail #rz-detail { display: block; }
+.resizer::after { content: ""; position: absolute; top: 0; bottom: 0; width: 2px; background: transparent; transition: background .12s; }
+#rz-side::after { left: 0; }
+#rz-detail::after { right: 0; }
+.resizer:hover::after, .resizer.dragging::after, .resizer:focus-visible::after { background: var(--accent); }
+body.resizing { cursor: col-resize; user-select: none; }
+
+/* sessions */
+#side { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 8px; padding: 16px 18px 12px; font-weight: 600; }
+.brand .logo { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent); }
+.brand button { margin-left: auto; padding: 2px 8px; }
+.side-head { padding: 4px 18px 8px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+#side .side-search { margin: 0 16px 8px; max-width: none; flex: none; }
+#sessions { flex: 1; min-height: 0; overflow: auto; padding: 0 8px 12px; }
+.group { position: sticky; top: 0; z-index: 1; display: flex; gap: 6px; align-items: baseline; padding: 10px 12px 4px; background: var(--surface); font-size: 12px; color: var(--muted); }
+.group b { color: var(--fg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group .n { margin-left: auto; color: var(--faint); }
+.session { padding: 10px 12px; border-radius: var(--radius); cursor: pointer; margin-bottom: 2px; }
+.session:hover { background: var(--hover); }
+.session.active { background: var(--select); }
+.session .preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 500; line-height: 1.35; }
+.session .meta { display: flex; gap: 6px; align-items: center; margin-top: 4px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.session .meta .sep { color: var(--faint); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.dot.live { background: var(--ok); animation: pulse 1.6s ease-in-out infinite; }
+.dot.err { background: var(--error); }
+@keyframes pulse { 50% { opacity: .35; } }
+
+/* session header */
+#head { padding: 20px 24px 0; }
+#head h1 { font-size: 18px; font-weight: 600; margin: 0; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#head .sub { margin-top: 4px; font-size: 12px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
+#stats { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 24px 12px; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 12px; min-width: 88px; }
+.stat .k { font-size: 11px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+.stat .v { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 1px; }
+.stat.bad .v { color: var(--error); }
+
+/* context */
+#ctx { margin: 0 24px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px 10px;
+  display: grid; grid-template-columns: minmax(300px, 1fr) minmax(0, 1.3fr); gap: 12px 28px; }
+#ctx[hidden] { display: none; }
+#ctx.collapsed { grid-template-columns: 1fr; row-gap: 0; }
+#ctx.collapsed .cbar { margin-bottom: 2px; }
+.ctx-top { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ctx-delta { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ctx-tools { margin-left: auto; display: flex; gap: 4px; align-self: center; }
+.ctx-tools button { padding: 1px 9px; font-size: 12px; color: var(--muted); }
+.ctx-tools button.on { color: var(--fg); background: var(--select); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.ctx-label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.ctx-total { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ctx-where { font-size: 12px; color: var(--muted); }
+.ctx-where.pinned { color: var(--accent); }
+.cbar { display: flex; gap: 2px; height: 12px; margin: 2px 0 10px; }
+.cbar span { height: 100%; min-width: 2px; }
+.cbar span:first-child { border-radius: 4px 0 0 4px; }
+.cbar span:last-child { border-radius: 0 4px 4px 0; }
+.cbar .free { background: var(--line); }
+.cbar .reserve { background: repeating-linear-gradient(135deg, var(--faint) 0 2px, transparent 2px 5px); }
+.legend { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 2px 18px; font-size: 12.5px; }
+.legend .item { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.legend .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend .d { min-width: 44px; text-align: right; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.legend .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.legend .n { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ctx-notes { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.sw.free { background: var(--line); box-shadow: inset 0 0 0 1px var(--border); }
+.sw.reserve { background: repeating-linear-gradient(135deg, var(--faint) 0 2px, transparent 2px 5px); }
+.k-prompt { background: var(--c1); } .k-project { background: var(--c2); } .k-tools { background: var(--c3); }
+.k-mcp { background: var(--c4); } .k-summary { background: var(--c5); } .k-messages { background: var(--c6); }
+.ctx-chart { position: relative; height: 150px; min-width: 0; }
+.ctx-table { position: relative; height: 150px; overflow: auto; font-size: 12px; min-width: 0; }
+.ctx-table table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.ctx-table th { white-space: nowrap; position: sticky; top: 0; background: var(--surface); text-align: right; font-weight: 500; color: var(--muted); padding: 2px 6px; border-bottom: 1px solid var(--border); }
+.ctx-table td { text-align: right; padding: 2px 6px; white-space: nowrap; }
+.ctx-table th:first-child, .ctx-table td:first-child { text-align: left; }
+.ctx-table tbody tr { cursor: pointer; }
+.ctx-table tbody tr:hover { background: var(--hover); }
+.ctx-table tr.cur { background: var(--select); }
+.ctx-chart svg { position: absolute; inset: 0; display: block; }
+.ctx-chart text { font: 10.5px var(--sans); fill: var(--muted); font-variant-numeric: tabular-nums; }
+.ctx-chart .hit { cursor: pointer; }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px;
+  font-size: 12px; line-height: 1.45; box-shadow: 0 4px 16px rgba(0,0,0,.12); white-space: nowrap; z-index: 3; }
+.tip b { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* toolbar */
+#chips { display: contents; }
+#controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 24px 12px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px 3px 8px; font-size: 12.5px; cursor: pointer; user-select: none; background: var(--surface); }
+.chip.off { opacity: .45; }
+.chip.off .dot { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--faint); }
+.search { flex: 1 1 140px; max-width: 240px; min-width: 110px; margin-left: 4px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--fg); font: inherit; font-size: 13px; }
+.search:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: 0; }
+.actions { display: flex; gap: 6px; margin-left: auto; }
+
+/* timeline */
+#timeline { position: relative; flex: 1; min-height: 0; margin: 0 24px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden auto; }
+.grid { display: grid; grid-template-columns: minmax(280px, 40%) 1fr; }
+#axis { position: sticky; top: 0; z-index: 2; background: var(--surface); border-bottom: 1px solid var(--border); }
+#axis .title { padding: 0 16px; line-height: 32px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+#axis .scale { position: relative; height: 32px; }
+#axis .tick { position: absolute; top: 0; padding-left: 6px; font-size: 11px; line-height: 32px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.row { cursor: pointer; }
+.row:hover { background: var(--hover); }
+.row.selected { background: var(--select); }
+.row .label { display: flex; align-items: center; gap: 7px; height: 30px; padding-right: 12px; white-space: nowrap; overflow: hidden; }
+.guide { align-self: stretch; width: 16px; flex: none; border-left: 1px solid var(--border); margin-left: 7px; margin-right: -7px; }
+.guide:first-child { margin-left: 23px; }
+.caret { width: 16px; flex: none; text-align: center; color: var(--faint); transition: transform .12s; font-size: 10px; }
+.caret.closed { transform: rotate(-90deg); }
+.row .name { overflow: hidden; text-overflow: ellipsis; }
+.row .kind { color: var(--faint); font-size: 12px; }
+.row .dur { margin-left: auto; padding-left: 10px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.row.error .name, .row.denied .name { color: var(--error); }
+.row.skipped .name { color: var(--muted); font-style: italic; }
+.row .running { color: var(--accent); }
+.track { position: relative; height: 30px;
+  background-image: repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px calc(100% / 6)); }
+.bar { position: absolute; top: 10px; height: 10px; min-width: 3px; border-radius: 5px; }
+.bar.parent { opacity: .28; }
+.row:hover .bar.parent, .row.selected .bar.parent { opacity: .45; }
+.row.selected .bar { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--accent); }
+.bar.error, .bar.denied { background: var(--error) !important; opacity: 1; }
+.bar.skipped { background: repeating-linear-gradient(135deg, var(--faint) 0 3px, transparent 3px 6px) !important; }
+.bar.open { background-image: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); background-size: 60px 100%; background-repeat: no-repeat; animation: sweep 1.2s linear infinite; }
+@keyframes sweep { from { background-position: -60px 0; } to { background-position: calc(100% + 60px) 0; } }
+.c-turn { background-color: var(--turn); } .c-request { background-color: var(--request); } .c-tool { background-color: var(--tool); }
+.c-approval { background-color: var(--approval); } .c-mcp { background-color: var(--mcp); } .c-mcp-connect { background-color: var(--connect); }
+.empty { padding: 48px 24px; color: var(--muted); text-align: center; }
+
+/* detail */
+#detail { background: var(--surface); border-left: 1px solid var(--border); display: none; }
+.app.with-detail #detail { display: flex; flex-direction: column; }
+#dbody { flex: 1; min-height: 0; overflow: auto; padding: 0 20px 28px; }
+.d-top { display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 1; background: var(--surface); padding: 16px 0 6px; }
+.d-top button { margin-left: auto; border: none; font-size: 16px; padding: 2px 8px; color: var(--muted); }
+.tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--hover); color: var(--muted); }
+.tag.error, .tag.denied { background: color-mix(in srgb, var(--error) 14%, transparent); color: var(--error); }
+.tag.ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+#detail h2 { font-size: 16px; font-weight: 600; margin: 6px 0 14px; line-height: 1.35; word-break: break-word; }
+.minis { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.mini { border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 10px; }
+.mini .k { font-size: 11px; color: var(--muted); }
+.mini .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+#detail h3 { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 22px 0 8px; }
+.kv { display: grid; grid-template-columns: minmax(110px, 38%) 1fr; gap: 6px 12px; font-size: 13px; }
+.kv .k { color: var(--muted); overflow-wrap: anywhere; word-break: normal; }
+.kv .v { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+.kv .v a { font-family: var(--sans); font-size: 13px; }
+.kv .v.warn { color: var(--approval); }
+a.link { color: var(--accent); cursor: pointer; text-decoration: none; }
+a.link:hover { text-decoration: underline; }
+.block { border: 1px solid var(--border); border-radius: var(--radius); margin: 8px 0; overflow: hidden; }
+.block > summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 7px 10px; cursor: pointer; font-size: 12.5px; color: var(--muted); background: var(--hover); }
+.block > summary::-webkit-details-marker { display: none; }
+.block > summary::before { content: "›"; transition: transform .12s; }
+.block[open] > summary::before { transform: rotate(90deg); }
+.block > summary .copy { margin-left: auto; padding: 0 8px; font-size: 11.5px; }
+.block pre { margin: 0; padding: 10px 12px; max-height: 380px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 12.5px/1.55 var(--mono); }
+.msg { margin: 10px 0; }
+.msg .who { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.msg.user .who { color: var(--accent); }
+.msg.error .who { color: var(--error); }
+
+@media (prefers-reduced-motion: reduce) { .dot.live, .bar.open { animation: none; } }
+@media (max-width: 900px) {
+  html, body { height: auto; overflow: auto; }
+  .app, .app.with-detail { grid-template-columns: 1fr; height: auto; }
+  #side { max-height: 40vh; }
+  #view { overflow: visible; }
+  #timeline { max-height: 70vh; margin: 0 12px 16px; }
+  #ctx { grid-template-columns: 1fr; margin: 0 12px 12px; }
+  #dbody { max-height: 80vh; }
+  .resizer, .app.with-detail #rz-detail { display: none; }
+  #head, #stats, #controls { padding-left: 12px; padding-right: 12px; }
+  .grid { grid-template-columns: 50% 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside id="side">
+    <div class="brand"><span class="logo"></span>wisp trace<button id="theme" title="Toggle light/dark">◐</button></div>
+    <div class="side-head" id="count">Sessions</div>
+    <input id="ssearch" class="search side-search" type="search" placeholder="Search sessions…" aria-label="Search sessions">
+    <div id="sessions"></div>
+  </aside>
+  <section id="view">
+    <div id="head"></div>
+    <div id="stats"></div>
+    <div id="ctx" hidden></div>
+    <div id="controls"></div>
+    <div id="timeline"><div class="empty">Pick a session.</div></div>
+  </section>
+  <aside id="detail"><div id="dbody"></div></aside>
+  <div class="resizer" id="rz-side" data-pane="side" role="separator" aria-orientation="vertical" aria-label="Resize the session list" tabindex="0" title="Drag or use ←/→ to resize, double-click to reset"></div>
+  <div class="resizer" id="rz-detail" data-pane="detail" role="separator" aria-orientation="vertical" aria-label="Resize the detail panel" tabindex="0" title="Drag or use ←/→ to resize, double-click to reset"></div>
+</div>
+<script>
+"use strict";
+const KINDS = ["turn", "request", "tool", "approval", "mcp", "mcp.connect"];
+// Attributes shown as text blocks rather than inline values.
+const TEXT_ATTRS = ["wisp.input", "wisp.reasoning", "wisp.answer", "gen_ai.tool.call.arguments", "gen_ai.tool.call.result", "error", "wisp.note", "wisp.mcp.invalid_arguments"];
+// Attributes the request's stat blocks already show.
+const METRIC_ATTRS = ["gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens", "wisp.usage.cached_tokens",
+  "wisp.time_to_first_token_ms", "wisp.output_tokens_per_s", "wisp.usage.cost_usd", "wisp.cost.usd", "wisp.cost.source",
+  "wisp.cost.list_usd", "wisp.cost.input_usd", "wisp.cost.cached_input_usd", "wisp.cost.output_usd", "wisp.price",
+  "wisp.routing", "wisp.routing.order", "wisp.routing.rates", "wisp.provider", "wisp.context"];
+// costOf is a request's cost: billed where the endpoint said, else at list price.
+const costOf = s => s.attrs["wisp.cost.usd"] ?? s.attrs["wisp.usage.cost_usd"] ?? 0;
+const usd = n => n >= 0.01 ? "$" + n.toFixed(4) : n > 0 ? "$" + n.toPrecision(3) : "$0";
+// underSubAgent says whether a span runs inside a sub-agent: under a turn
+// that has a parent.
+function underSubAgent(s) {
+  for (let x = S.byId.get(s.parent); x; x = S.byId.get(x.parent)) if (x.kind === "turn" && x.parent) return true;
+  return false;
+}
+// descendants lists the spans under s.
+function descendants(s) {
+  const out = [], walk = id => { for (const c of S.children.get(id) || []) { out.push(c); walk(c.id); } };
+  walk(s.id);
+  return out;
+}
+const normProvider = p => (p || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const shortKey = k => k.replace(/^(gen_ai|wisp)\./, "").replaceAll("_", " ");
+const TEXT_TITLES = { "wisp.input": "input", "wisp.reasoning": "reasoning", "wisp.answer": "answer", "gen_ai.tool.call.arguments": "arguments",
+  "gen_ai.tool.call.result": "result", "error": "error", "wisp.note": "note", "wisp.mcp.invalid_arguments": "invalid arguments" };
+const S = { sessions: [], sfilter: "", detailKey: null, detailToken: 0, ctxAt: null, hoverX: null, sid: null, follow: true, seen: "", spans: [], byId: new Map(), children: new Map(), messages: null,
+  collapsed: new Set(), hidden: new Set(), zoom: null, selected: null, filter: "", timer: null };
+
+// el builds DOM with text content only, so model and tool output can't inject HTML.
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === "class") e.className = v;
+    else if (k === "style") Object.assign(e.style, v);
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) e.append(kid instanceof Node ? kid : String(kid));
+  return e;
+}
+const $ = id => document.getElementById(id);
+// fill replaces box's children, skipping empty slots (null, false).
+const fill = (box, ...kids) => box.replaceChildren(...kids.flat().filter(k => k != null && k !== false));
+function fmtDur(ms) {
+  if (ms == null || isNaN(ms)) return "";
+  if (ms < 1) return ms.toFixed(2) + " ms";
+  if (ms < 1000) return Math.round(ms) + " ms";
+  if (ms < 60000) return (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + " s";
+  const m = Math.floor(ms / 60000), s = Math.round((ms % 60000) / 1000);
+  return m + "m " + String(s).padStart(2, "0") + "s";
+}
+function fmtNum(n) {
+  n = n ?? 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  if (n >= 1e4) return (n / 1e3).toFixed(1) + "k";
+  return n.toLocaleString();
+}
+function ago(date) {
+  const s = (Date.now() - new Date(date)) / 1000;
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + " min ago";
+  if (s < 86400) return Math.floor(s / 3600) + " h ago";
+  if (s < 7 * 86400) return Math.floor(s / 86400) + " d ago";
+  return new Date(date).toLocaleDateString();
+}
+const endOf = s => s.end || Date.now();
+const kindClass = k => "c-" + k.replace(".", "-");
+const dot = k => el("span", { class: "dot " + kindClass(k) });
+const firstLine = t => (t || "").split("\n")[0];
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(url + ": " + r.status + " " + await r.text());
+  return r.json();
+}
+
+// loadSessions refreshes the list. It follows the newest session unless
+// an older one was picked, and reloads the selected session's spans when
+// they changed, e.g. when the next turn starts after a pause.
+async function loadSessions() {
+  S.sessions = await getJSON("api/sessions");
+  renderSessions();
+  const newest = newestSession();
+  if (S.sid && S.follow && newest && newest.id !== S.sid) return selectSession(newest.id);
+  const cur = S.sessions.find(x => x.id === S.sid);
+  const mark = cur && cur.totals ? cur.totals.spans + "/" + cur.totals.open : "";
+  if (S.sid && mark !== S.seen) { S.seen = mark; loadSpans(); }
+  if (!S.sid) {
+    const [hashSession, hashSpan] = location.hash.slice(1).split("/");
+    const first = S.sessions.find(s => s.id === hashSession) || S.sessions.find(s => s.here && s.totals) || S.sessions.find(s => s.totals) || S.sessions[0];
+    if (first) {
+      S.follow = first.id === newestSession().id;
+      selectSession(first.id, first.id === hashSession ? hashSpan : null);
+    }
+  }
+}
+
+// newestSession is the one to follow: the newest started where wisp runs,
+// else the newest anywhere.
+function newestSession() { return S.sessions.find(s => s.here) || S.sessions[0]; }
+
+function renderSessions() {
+  const q = S.sfilter, list = q ? S.sessions.filter(s => [s.preview, s.model, s.id, s.dir].some(v => (v || "").toLowerCase().includes(q))) : S.sessions;
+  $("count").textContent = "Sessions · " + (q ? list.length + " of " : "") + S.sessions.length;
+  // One group per directory, this one first, the rest by their newest session.
+  const groups = new Map(list.some(s => s.here) ? [[list.find(s => s.here).dir, []]] : []);
+  for (const s of list) groups.has(s.dir) ? groups.get(s.dir).push(s) : groups.set(s.dir, [s]);
+  const header = (dir, n, here) => el("div", { class: "group", title: dir || "sessions from before wisp recorded directories" },
+    el("b", {}, here ? "This folder" : dir ? dir.split("/").filter(Boolean).pop() || "/" : "Unknown folder"),
+    here || !dir ? null : el("span", { class: "mono" }, shortDir(dir)), el("span", { class: "n" }, String(n)));
+  fill($("sessions"), [...groups].flatMap(([dir, ss]) => [header(dir, ss.length, ss[0].here), ...ss.map(sessionRow)]),
+    list.length ? null : el("div", { class: "empty" }, S.sessions.length ? "No session matches." : "No sessions yet."));
+}
+
+// shortDir is dir's parent, for telling apart folders with the same name.
+function shortDir(dir) {
+  const parts = dir.split("/").filter(Boolean);
+  return parts.length > 1 ? "…/" + parts.slice(-2, -1)[0] : "";
+}
+
+function sessionRow(s) {
+  const t = s.totals, sep = () => el("span", { class: "sep" }, "·");
+  const meta = [el("span", { title: new Date(s.created).toLocaleString() }, ago(s.created)), sep(), el("span", {}, s.model || "no model")];
+  if (t) {
+    meta.push(sep(), el("span", {}, t.turns + (t.turns === 1 ? " turn" : " turns")), sep(), el("span", {}, fmtNum(t.input_tokens) + " tok"));
+    if (t.errors) meta.push(el("span", { class: "dot err", title: t.errors + " failed or denied" }));
+    if (t.open) meta.push(el("span", { class: "dot live", title: "running" }));
+  }
+  return el("div", { class: "session" + (s.id === S.sid ? " active" : ""), title: s.id,
+      onclick: () => { S.follow = s.id === newestSession().id; selectSession(s.id); } },
+    el("div", { class: "preview" }, s.preview || "(empty)"), el("div", { class: "meta" }, meta));
+}
+
+// select opens a span's detail and moves the context panel to it; reveal
+// scrolls its row into view.
+function select(id, reveal) {
+  S.selected = id;
+  history.replaceState(null, "", "#" + S.sid + (id ? "/" + id : ""));
+  renderTimeline();
+  renderContext();
+  renderDetail();
+  if (reveal && id) revealRow(id);
+}
+
+// revealRow expands the span's ancestors and scrolls the span list to its
+// row, unless it's already in view.
+function revealRow(id) {
+  let opened = false;
+  for (let x = S.byId.get(S.byId.get(id)?.parent); x; x = S.byId.get(x.parent)) opened = S.collapsed.delete(x.id) || opened;
+  if (opened) renderTimeline();
+  const box = $("timeline"), row = box.querySelector(".row.selected"), axis = $("axis");
+  if (!row) return;
+  const top = row.offsetTop - (axis ? axis.offsetHeight : 0);
+  if (top < box.scrollTop || row.offsetTop + row.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = top - box.clientHeight / 3;
+}
+
+async function selectSession(id, spanID) {
+  if (S.sid !== id) Object.assign(S, { sid: id, collapsed: new Set(), zoom: null, selected: spanID || null, messages: null });
+  history.replaceState(null, "", "#" + id + (S.selected ? "/" + S.selected : ""));
+  renderSessions();
+  await loadSpans();
+  if (spanID && S.selected === spanID) revealRow(spanID);
+}
+
+async function loadSpans() {
+  const id = S.sid;
+  const spans = await getJSON("api/sessions/" + encodeURIComponent(id) + "/spans");
+  if (id !== S.sid) return;
+  S.spans = spans;
+  S.byId = new Map(spans.map(s => [s.id, s]));
+  S.children = new Map();
+  for (const s of spans) {
+    const p = S.byId.has(s.parent) ? s.parent : "";
+    if (!S.children.has(p)) S.children.set(p, []);
+    S.children.get(p).push(s);
+  }
+  render();
+  clearTimeout(S.timer);
+  if (spans.some(s => !s.end)) S.timer = setTimeout(loadSpans, 2000); // live session
+}
+
+function sessionRange() {
+  if (!S.spans.length) return [0, 1];
+  let a = Infinity, b = -Infinity;
+  for (const s of S.spans) { a = Math.min(a, s.start); b = Math.max(b, endOf(s)); }
+  return [a, Math.max(b, a + 1)];
+}
+
+function render() { renderHead(); renderControls(); renderContext(); renderTimeline(); renderDetail(); }
+
+function renderHead() {
+  const s = S.sessions.find(x => x.id === S.sid);
+  const [a, b] = sessionRange();
+  const req = S.spans.filter(x => x.kind === "request");
+  const sum = k => req.reduce((n, x) => n + (x.attrs[k] || 0), 0);
+  const inTok = sum("gen_ai.usage.input_tokens"), cached = sum("wisp.usage.cached_tokens");
+  const cost = req.reduce((n, x) => n + costOf(x), 0);
+  const subCost = req.filter(underSubAgent).reduce((n, x) => n + costOf(x), 0);
+  const estimated = req.some(x => x.attrs["wisp.cost.source"] === "list price");
+  const errors = S.spans.filter(x => x.status === "error" || x.status === "denied").length;
+  const running = S.spans.some(x => !x.end);
+  fill($("head"),
+    el("h1", { title: s?.preview || "" }, firstLine(s?.preview) || "(empty session)"),
+    el("div", { class: "sub" }, el("span", {}, s?.model || "no model"), el("span", {}, "·"),
+      el("span", {}, s ? new Date(s.created).toLocaleString() : ""), el("span", {}, "·"), el("span", { class: "mono" }, S.sid || ""),
+      s?.dir ? el("span", {}, "·") : null, s?.dir ? el("span", { class: "mono", title: s.dir }, s.dir) : null,
+      running ? el("span", { class: "tag ok" }, el("span", { class: "dot live" }), "live") : null));
+  const stat = (k, v, cls) => el("div", { class: "stat " + (cls || "") }, el("div", { class: "k" }, k), el("div", { class: "v" }, v));
+  fill($("stats"),
+    stat("duration", S.spans.length ? fmtDur(b - a) : "–"),
+    stat("turns", S.spans.filter(x => x.kind === "turn" && !x.parent).length),
+    stat("requests", req.length),
+    stat("tool calls", S.spans.filter(x => x.kind === "tool").length),
+    stat("tokens in", fmtNum(inTok)),
+    stat("tokens out", fmtNum(sum("gen_ai.usage.output_tokens"))),
+    stat("cached", inTok ? Math.round(cached * 100 / inTok) + "%" : "–"),
+    cost ? stat(estimated ? "cost (est.)" : "cost", usd(cost)) : null,
+    subCost ? stat("sub-agents", usd(subCost)) : null,
+    stat("errors", errors, errors ? "bad" : ""));
+}
+
+// Context: what the model had in its window at a request, like the TUI's
+// /context. Requests record the loop's budget snapshot as wisp.context;
+// older ones only have the server's count of what was sent.
+const MCP_TOOLS = ["tool_search", "mcp_call"];
+const CTX_CATS = [["prompt", "System prompt"], ["project", "Project instructions"], ["tools", "Tool definitions"],
+  ["mcp", "MCP servers"], ["summary", "Summary of earlier messages"], ["messages", "Messages"]];
+function ctxParts(c) {
+  let tools = 0, mcp = 0;
+  for (const [name, n] of Object.entries(c.tools || {})) MCP_TOOLS.includes(name) ? mcp += n : tools += n;
+  return { prompt: c.prompt, project: c.project, tools, mcp: c.mcp_prompt + mcp, summary: c.summary, messages: c.messages };
+}
+const ctxUsed = r => { const c = r.attrs["wisp.context"]; return c ? c.fixed + c.history : r.attrs["gen_ai.usage.input_tokens"]; };
+const masked = c => c ? c.masked_results + c.masked_calls : 0;
+const isCompaction = s => s.kind === "request" && !!s.attrs["wisp.compaction"];
+const signed = n => (n > 0 ? "+" : n < 0 ? "−" : "±") + fmtNum(Math.abs(n));
+const pctOf = (v, whole) => (v * 100 / whole).toFixed(1) + "%";
+// agentOf names the loop a span belongs to: "" for the main agent, else
+// its sub-agent's turn.
+function agentOf(s) {
+  for (let x = s; x; x = S.byId.get(x.parent)) if (x.kind === "turn") return x.parent ? x.id : "";
+  return "";
+}
+// ctxSeries is an agent's requests in order, compactions left out: their
+// input is the history being summarized, not the agent's context.
+const ctxSeries = agent => S.spans.filter(x => x.kind === "request" && !isCompaction(x) && ctxUsed(x) != null && agentOf(x) === agent)
+  .sort((x, y) => x.start - y.start);
+// ctxPoint picks the request the panel shows: the selected one, else the
+// last one its agent sent before the selected span (for a request, e.g. a
+// compaction) or by its end (anything else), else the main agent's last.
+function ctxPoint() {
+  const s = S.byId.get(S.selected), agent = s ? agentOf(s) : "", reqs = ctxSeries(agent);
+  let at = reqs.includes(s) ? s : null;
+  if (!at) {
+    const by = !s ? Infinity : s.kind === "request" ? s.start - 1e-6 : endOf(s);
+    for (const r of reqs) if (r.start <= by) at = r;
+  }
+  return { reqs, at, agent, s };
+}
+
+// CTX_PREFS are the panel's view options, kept in the browser.
+const CTX_PREFS = { open: true, fit: false, table: false };
+try { Object.assign(CTX_PREFS, JSON.parse(localStorage.getItem("wisp-trace-ctx") || "{}")); } catch { /* storage off */ }
+function setCtxPref(k, v) {
+  CTX_PREFS[k] = v;
+  try { localStorage.setItem("wisp-trace-ctx", JSON.stringify(CTX_PREFS)); } catch { /* storage off */ }
+  renderContext();
+}
+
+function renderContext() {
+  const box = $("ctx");
+  box.hidden = !S.spans.length;
+  if (box.hidden) return;
+  const { reqs, at, agent, s } = ctxPoint();
+  const [a] = sessionRange();
+  const i = reqs.indexOf(at), prev = reqs[i - 1];
+  const c = at?.attrs["wisp.context"], pc = prev?.attrs["wisp.context"], sent = at?.attrs["gen_ai.usage.input_tokens"];
+  const used = at ? ctxUsed(at) : 0, win = c?.window;
+  const where = !at ? "no request before this point" : [
+    !s ? "latest request" : s === at ? "this request" : isCompaction(s) ? "compaction · the context before it" : "last request before the selected span",
+    "#" + (i + 1) + " of " + reqs.length, "+" + fmtDur(at.start - a), agent ? "sub-agent" : null].filter(Boolean).join(" · ");
+  const tool = (label, on, onclick, title) => el("button", { class: on ? "on" : "", "aria-pressed": String(!!on), title: title || "", onclick }, label);
+  const top = el("div", { class: "ctx-top" }, el("span", { class: "ctx-label" }, "Context"),
+    at ? el("span", { class: "ctx-total" }, fmtNum(used) + (win ? " / " + fmtNum(win) + " (" + pctOf(used, win) + ")" : c ? " · window unknown" : " tokens sent")) : null,
+    prev ? el("span", { class: "ctx-delta", title: "change since request #" + i }, signed(used - ctxUsed(prev))) : null,
+    el("span", { class: "ctx-where" + (s ? " pinned" : "") }, where),
+    el("span", { class: "ctx-tools" },
+      CTX_PREFS.open ? [
+        tool("Chart", !CTX_PREFS.table, () => setCtxPref("table", false)),
+        tool("Table", CTX_PREFS.table, () => setCtxPref("table", true)),
+        !CTX_PREFS.table && win ? tool("Fit", CTX_PREFS.fit, () => setCtxPref("fit", !CTX_PREFS.fit), "Scale the chart to the usage, not the whole window") : null] : null,
+      tool(CTX_PREFS.open ? "Hide" : "Show", false, () => setCtxPref("open", !CTX_PREFS.open), "Show or hide the breakdown and chart")));
+  let bar = null, legend = null, notes;
+  if (c) {
+    const parts = ctxParts(c), pparts = pc && ctxParts(pc), whole = win || used || 1;
+    const cats = CTX_CATS.filter(([k]) => parts[k] > 0 || pparts?.[k] > 0);
+    const freeOf = x => Math.max(0, x.window - x.fixed - x.history - x.reserve), free = win ? freeOf(c) : 0;
+    const share = v => win ? " · " + pctOf(v, win) : "";
+    const seg = (cls, v, label) => v > 0 ? el("span", { class: cls, style: { flex: v / whole + " 1 0" }, title: label + ": " + fmtNum(v) + " tokens" + share(v) }) : null;
+    const item = (cls, label, v, d) => el("div", { class: "item" }, el("span", { class: "sw " + cls }), el("span", { class: "l", title: label }, label),
+      el("span", { class: "n" }, fmtNum(v) + share(v)), el("span", { class: "d", title: d ? "since request #" + i : "" }, d ? signed(d) : ""));
+    bar = el("div", { class: "cbar" }, cats.map(([k, label]) => seg("k-" + k, parts[k], label)),
+      seg("free", free, "Free space"), win ? seg("reserve", c.reserve, "Reserved for the reply") : null);
+    legend = el("div", { class: "legend" }, cats.map(([k, label]) => item("k-" + k, label, parts[k], pparts && parts[k] - pparts[k])),
+      win ? [item("free", "Free space", free, pc?.window && free - freeOf(pc)), item("reserve", "Reserved for the reply", c.reserve)] : null);
+    const n = [];
+    if (win) n.push("masks history at " + fmtNum(c.fixed + c.mask_at) + ", summarizes at " + fmtNum(c.fixed + c.summarize_at));
+    if (masked(c)) n.push(masked(c) + " masked, saving ~" + fmtNum(c.masked_saved) + (masked(c) > masked(pc) && pc ? " (" + signed(masked(c) - masked(pc)) + " here)" : ""));
+    if (c.compactions) n.push(c.compactions + (c.compactions > 1 ? " compactions" : " compaction"));
+    if (sent != null) n.push(fmtNum(sent) + " sent by the server's count");
+    notes = el("div", { class: "ctx-notes" }, "Estimated by category" + (n.length ? " · " + n.join(" · ") : ""));
+  } else {
+    notes = el("div", { class: "ctx-notes" }, at ? "No breakdown: this request was recorded before wisp stored context snapshots." : "Pick a later span to see the context.");
+  }
+  const oldTable = box.querySelector(".ctx-table"), scroll = oldTable?.scrollTop, samePoint = S.ctxAt === at?.id;
+  S.ctxAt = at?.id;
+  const right = !CTX_PREFS.open ? null : CTX_PREFS.table ? ctxTable(reqs, at) : el("div", { class: "ctx-chart" });
+  box.classList.toggle("collapsed", !CTX_PREFS.open);
+  fill(box, top, el("div", { class: "ctx-left" }, bar, CTX_PREFS.open ? [legend, notes] : null), right);
+  if (right && !CTX_PREFS.table) drawChart(right, reqs, at, agent);
+  const table = box.querySelector(".ctx-table"), cur = table?.querySelector("tr.cur");
+  if (table && samePoint && scroll != null) table.scrollTop = scroll;
+  else if (cur) table.scrollTop = cur.offsetTop - table.clientHeight / 2;
+}
+
+// ctxTable is the chart as rows: each request's context, its change, and
+// the server's count. Click a row to select the request.
+function ctxTable(reqs, at) {
+  const [a] = sessionRange();
+  const head = [["#", "request"], ["at", "time into the session"], ["context", "estimated context"], ["window", "share of the window"],
+    ["change", "since the previous request"], ["sent", "what was sent, by the server's count"]];
+  return el("div", { class: "ctx-table" }, el("table", {},
+    el("thead", {}, el("tr", {}, head.map(([h, title]) => el("th", { title }, h)))),
+    el("tbody", {}, reqs.map((r, i) => {
+      const c = r.attrs["wisp.context"], u = ctxUsed(r), sent = r.attrs["gen_ai.usage.input_tokens"];
+      return el("tr", { class: r === at ? "cur" : "", onclick: () => select(r.id, true) },
+        el("td", {}, "#" + (i + 1)), el("td", {}, "+" + fmtDur(r.start - a)), el("td", {}, fmtNum(u)),
+        el("td", {}, c?.window ? pctOf(u, c.window) : "–"), el("td", {}, i ? signed(u - ctxUsed(reqs[i - 1])) : ""),
+        el("td", {}, sent != null ? fmtNum(sent) : "–"));
+    }))));
+}
+
+const svg = (tag, attrs, ...kids) => {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  e.append(...kids);
+  return e;
+};
+
+// drawChart plots the context each request carried, one step per request
+// (not by time: idle gaps would squash it), with the thresholds, marks
+// compactions and masking, and marks the request the panel shows. Hover
+// reads a request, click selects it.
+function drawChart(host, reqs, at, agent) {
+  const W = host.clientWidth, H = host.clientHeight;
+  if (!W || !reqs.length) { host.append(el("div", { class: "ctx-notes" }, "No requests to chart yet.")); return; }
+  const pad = { l: 42, r: 10, t: 16, b: 18 };
+  const [a] = sessionRange();
+  const n = reqs.length, step = (W - pad.l - pad.r) / n;
+  const x = i => pad.l + i * step, mid = i => x(i + .5);
+  const last = reqs.findLast(r => r.attrs["wisp.context"])?.attrs["wisp.context"];
+  const win = last?.window || 0, peak = Math.max(...reqs.map(ctxUsed));
+  const ymax = (CTX_PREFS.fit || !win ? peak * 1.1 : Math.max(win, peak)) || 1;
+  const y = v => pad.t + (1 - v / ymax) * (H - pad.t - pad.b);
+  const g = svg("svg", { width: W, height: H, role: "img", "aria-label": "Context used per request; the Table button lists the values" });
+  for (let i = 0; i <= 4; i++) {
+    const v = (ymax * i) / 4, yy = Math.round(y(v)) + .5;
+    g.append(svg("line", { x1: pad.l, x2: W - pad.r, y1: yy, y2: yy, style: "stroke: var(--line)" }),
+      svg("text", { x: pad.l - 6, y: yy + 3.5, "text-anchor": "end" }, fmtNum(Math.round(v))));
+  }
+  const rule = (v, label, dash) => {
+    if (!(v > 0) || v > ymax) return;
+    const yy = Math.round(y(v)) + .5;
+    g.append(svg("line", { x1: pad.l, x2: W - pad.r, y1: yy, y2: yy, style: "stroke: var(--faint)" + (dash ? "; stroke-dasharray: 4 3" : "") }),
+      svg("text", { x: pad.l + 4, y: yy - 4 }, label));
+  };
+  if (last && win) {
+    rule(win, "window", false);
+    rule(last.fixed + last.summarize_at, "summarize", true);
+    rule(last.fixed + last.mask_at, "mask", true);
+  }
+  const base = y(0);
+  g.append(svg("text", { x: pad.l, y: H - 4 }, "request 1"), svg("text", { x: W - pad.r, y: H - 4, "text-anchor": "end" }, n > 1 ? String(n) : ""));
+  let d = "";
+  reqs.forEach((r, i) => { d += (i ? "V" : "M" + x(0) + " ") + y(ctxUsed(r)) + "H" + x(i + 1); });
+  g.append(svg("path", { d: d + "V" + base + "H" + x(0) + "Z", style: "fill: var(--accent); fill-opacity: .12" }),
+    svg("path", { d, style: "fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round" }));
+  // Compactions sit between the requests around them; masking shows as a
+  // tick under the request that sent more stand-ins.
+  for (const cp of S.spans.filter(x => isCompaction(x) && agentOf(x) === agent)) {
+    const xx = Math.round(x(reqs.filter(r => r.start < cp.start).length)) + .5;
+    g.append(svg("line", { x1: xx, x2: xx, y1: pad.t, y2: base, style: "stroke: var(--muted); stroke-dasharray: 2 2" }),
+      svg("text", { x: xx + 3, y: pad.t + 9 }, "compacted"));
+  }
+  reqs.forEach((r, i) => {
+    if (i && masked(r.attrs["wisp.context"]) > masked(reqs[i - 1].attrs["wisp.context"]))
+      g.append(svg("line", { x1: mid(i), x2: mid(i), y1: base - 5, y2: base, style: "stroke: var(--muted); stroke-width: 2" }));
+  });
+  const cursor = svg("line", { y1: pad.t, y2: base, style: "stroke: var(--muted); stroke-width: 1; visibility: hidden" });
+  const hover = svg("circle", { r: 4, style: "fill: var(--surface); stroke: var(--accent); stroke-width: 2; visibility: hidden" });
+  g.append(cursor, hover);
+  if (reqs.includes(at)) g.append(svg("circle", { cx: mid(reqs.indexOf(at)), cy: y(ctxUsed(at)), r: 5, style: "fill: var(--accent); stroke: var(--surface); stroke-width: 2" }));
+  const hit = svg("rect", { class: "hit", x: pad.l, y: 0, width: Math.max(0, W - pad.l - pad.r), height: H, style: "fill: transparent" });
+  g.append(hit);
+  const tip = el("div", { class: "tip", style: { display: "none" } });
+  const nearest = px => Math.min(n - 1, Math.max(0, Math.floor((px - pad.l) / step)));
+  // show reads the request under px; the page redraws every 2 s while a
+  // session runs, so the pointer's place is kept to redraw the tooltip.
+  const show = px => {
+    const i = nearest(px), r = reqs[i], c = r.attrs["wisp.context"], used = ctxUsed(r), sent = r.attrs["gen_ai.usage.input_tokens"];
+    const pm = i ? masked(c) - masked(reqs[i - 1].attrs["wisp.context"]) : 0;
+    const cx = mid(i), cy = y(used);
+    cursor.setAttribute("x1", cx); cursor.setAttribute("x2", cx); cursor.style.visibility = "visible";
+    hover.setAttribute("cx", cx); hover.setAttribute("cy", cy); hover.style.visibility = "visible";
+    fill(tip, el("div", {}, "Request #" + (i + 1) + " · +" + fmtDur(r.start - a)),
+      el("div", {}, el("b", {}, fmtNum(used)), c?.window ? " of " + fmtNum(c.window) + " (" + pctOf(used, c.window) + ")" : " tokens",
+        i ? el("span", { class: "muted" }, " · " + signed(used - ctxUsed(reqs[i - 1]))) : null),
+      pm > 0 ? el("div", { class: "muted" }, pm + " more masked") : null,
+      c && sent != null ? el("div", { class: "muted" }, fmtNum(sent) + " by the server's count") : null,
+      el("div", { class: "muted" }, "click to select"));
+    tip.style.display = "block";
+    tip.style.left = Math.max(0, Math.min(cx + 12, W - tip.offsetWidth - 4)) + "px";
+    tip.style.top = Math.max(0, Math.min(cy - tip.offsetHeight - 8, H - tip.offsetHeight)) + "px";
+  };
+  const px = e => e.clientX - host.getBoundingClientRect().left;
+  hit.addEventListener("pointermove", e => { S.hoverX = px(e); show(S.hoverX); });
+  hit.addEventListener("pointerleave", () => { S.hoverX = null; tip.style.display = "none"; cursor.style.visibility = hover.style.visibility = "hidden"; });
+  hit.addEventListener("click", e => select(reqs[nearest(px(e))].id, true));
+  host.append(g, tip);
+  if (S.hoverX != null) show(S.hoverX);
+}
+
+function renderControls() {
+  const chips = KINDS.map(k => el("span", { class: "chip" + (S.hidden.has(k) ? " off" : ""), title: "show or hide " + k + " spans",
+      onclick: () => { S.hidden.has(k) ? S.hidden.delete(k) : S.hidden.add(k); renderControls(); renderTimeline(); } },
+    dot(k), k));
+  // The filter input stays put, so a refresh doesn't take its focus or caret.
+  if (!$("filter")) fill($("controls"), el("span", { id: "chips" }),
+    el("input", { id: "filter", class: "search", type: "search", placeholder: "Filter spans…", "aria-label": "Filter spans",
+      oninput: e => { S.filter = e.target.value.toLowerCase(); renderTimeline(); } }),
+    el("span", { id: "actions", class: "actions" }));
+  fill($("chips"), chips);
+  fill($("actions"),
+    S.zoom ? el("button", { onclick: () => { S.zoom = null; renderControls(); renderTimeline(); } }, "Reset zoom") : null,
+    el("button", { onclick: () => { S.collapsed.clear(); renderTimeline(); } }, "Expand"),
+    el("button", { onclick: () => { for (const s of S.spans) if (S.children.has(s.id)) S.collapsed.add(s.id); renderTimeline(); } }, "Collapse"));
+}
+
+// rows walks the tree: hidden kinds give their place to their children,
+// collapsed spans hide theirs, and a filter keeps matches and their ancestors.
+function rows() {
+  let keep = null;
+  if (S.filter) {
+    keep = new Set();
+    for (const s of S.spans) if ((s.name + " " + s.kind).toLowerCase().includes(S.filter))
+      for (let x = s; x; x = S.byId.get(x.parent)) keep.add(x.id);
+  }
+  const out = [];
+  const walk = (parent, depth) => {
+    for (const s of S.children.get(parent) || []) {
+      const shown = !S.hidden.has(s.kind) && (!keep || keep.has(s.id));
+      if (shown) out.push({ s, depth });
+      if (!shown || !S.collapsed.has(s.id)) walk(s.id, shown ? depth + 1 : depth);
+    }
+  };
+  walk("", 0);
+  return out;
+}
+
+function renderTimeline() {
+  const box = $("timeline");
+  if (!S.spans.length) {
+    fill(box, el("div", { class: "empty" }, S.sid ? "No spans in this session: it was recorded before tracing, or is still starting." : "Pick a session."));
+    return;
+  }
+  const [a] = sessionRange();
+  const [z0, z1] = S.zoom || sessionRange();
+  const pct = t => ((t - z0) / (z1 - z0)) * 100;
+  const ticks = [];
+  for (let i = 0; i < 6; i++) ticks.push(el("div", { class: "tick", style: { left: (i * 100) / 6 + "%" } }, fmtDur(z0 + ((z1 - z0) * i) / 6 - a)));
+  const axis = el("div", { id: "axis", class: "grid" }, el("div", { class: "title" }, "Span"), el("div", { class: "scale" }, ticks));
+  const list = rows().map(({ s, depth }) => {
+    const hasKids = S.children.has(s.id);
+    const dur = endOf(s) - s.start;
+    const left = Math.max(0, pct(s.start)), right = Math.min(100, pct(endOf(s)));
+    const bar = right >= 0 && left <= 100 ? el("div", {
+      class: ["bar", kindClass(s.kind), s.status, s.end ? "" : "open", hasKids ? "parent" : ""].join(" "),
+      style: { left: left + "%", width: Math.max(0.2, right - left) + "%" },
+      title: s.kind + " · " + s.name + " · " + fmtDur(dur),
+    }) : null;
+    const guides = Array.from({ length: depth }, () => el("span", { class: "guide" }));
+    return el("div", { class: "row grid " + (s.status || "") + (S.selected === s.id ? " selected" : ""),
+        onclick: () => select(s.id),
+        ondblclick: () => { const pad = Math.max(dur * 0.05, 1); S.zoom = [s.start - pad, endOf(s) + pad]; renderControls(); renderTimeline(); } },
+      el("div", { class: "label", style: { paddingLeft: depth ? "0" : "12px" } }, guides,
+        el("span", { class: "caret" + (S.collapsed.has(s.id) ? " closed" : ""),
+            onclick: e => { e.stopPropagation(); S.collapsed.has(s.id) ? S.collapsed.delete(s.id) : S.collapsed.add(s.id); renderTimeline(); } },
+          hasKids ? "▼" : ""),
+        s.end ? dot(s.kind) : el("span", { class: "dot live" }),
+        el("span", { class: "name", title: s.name }, s.name || "(unnamed)"),
+        el("span", { class: "kind" }, s.kind),
+        el("span", { class: "dur" }, s.end ? fmtDur(dur) : el("span", { class: "running" }, "running"))),
+      el("div", { class: "track" }, bar));
+  });
+  fill(box, axis, list);
+}
+
+function textBlock(title, value) {
+  let text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  if (typeof value === "string" && /^\s*[\[{]/.test(value)) {
+    try { text = JSON.stringify(JSON.parse(value), null, 2); } catch { /* not JSON: as is */ }
+  }
+  const long = text.length > 800;
+  const copy = el("button", { class: "copy", onclick: e => {
+    e.preventDefault();
+    navigator.clipboard?.writeText(text).then(() => { e.target.textContent = "Copied"; setTimeout(() => { e.target.textContent = "Copy"; }, 1200); });
+  } }, "Copy");
+  return el("details", { class: "block", ...(long ? {} : { open: "" }) },
+    el("summary", {}, el("span", {}, title), long ? el("span", { class: "muted" }, fmtNum(text.length) + " chars") : null, copy),
+    el("pre", {}, text));
+}
+
+function metrics(s) {
+  const a = s.attrs, out = [];
+  if (s.kind === "request") {
+    const inTok = a["gen_ai.usage.input_tokens"];
+    if (inTok != null) out.push(["tokens in", fmtNum(inTok)], ["tokens out", fmtNum(a["gen_ai.usage.output_tokens"])]);
+    if (inTok) out.push(["cache hit", Math.round((a["wisp.usage.cached_tokens"] || 0) * 100 / inTok) + "%"]);
+    if (a["wisp.time_to_first_token_ms"] != null) out.push(["first token", fmtDur(a["wisp.time_to_first_token_ms"])]);
+    if (a["wisp.output_tokens_per_s"]) out.push(["speed", a["wisp.output_tokens_per_s"].toFixed(1) + " tok/s"]);
+    const src = a["wisp.cost.source"] || (a["wisp.usage.cost_usd"] != null ? "billed" : null);
+    if (src && src !== "unknown") out.push([src === "billed" ? "cost (billed)" : "cost (list)", usd(costOf(s))]);
+  } else {
+    // Roll-up: what the requests under this span cost, sub-agents included.
+    const reqs = descendants(s).filter(x => x.kind === "request");
+    if (reqs.length) {
+      const inTok = reqs.reduce((n, x) => n + (x.attrs["gen_ai.usage.input_tokens"] || 0), 0);
+      const cached = reqs.reduce((n, x) => n + (x.attrs["wisp.usage.cached_tokens"] || 0), 0);
+      const cost = reqs.reduce((n, x) => n + costOf(x), 0);
+      const est = reqs.some(x => x.attrs["wisp.cost.source"] === "list price");
+      out.push(["requests", reqs.length], ["tokens in", fmtNum(inTok)],
+        ["tokens out", fmtNum(reqs.reduce((n, x) => n + (x.attrs["gen_ai.usage.output_tokens"] || 0), 0))]);
+      if (inTok) out.push(["cache hit", Math.round(cached * 100 / inTok) + "%"]);
+      if (cost) out.push([est ? "cost (est.)" : "cost", usd(cost)]);
+      const models = [...new Set(reqs.map(x => x.attrs["gen_ai.request.model"]).filter(Boolean))];
+      if (models.length > 1) out.push(["models", models.length]);
+    }
+  }
+  return out;
+}
+
+// routingSection shows where a request was sent and who served it.
+function routingSection(s) {
+  const a = s.attrs;
+  if (s.kind !== "request" || (!a["wisp.routing"] && !a["wisp.provider"])) return null;
+  const order = a["wisp.routing.order"] || [], rates = a["wisp.routing.rates"] || [];
+  const served = a["wisp.provider"];
+  const at = order.findIndex(p => normProvider(p) === normProvider(served));
+  const rows = [["mode", a["wisp.routing"] || "–"]];
+  if (order.length) rows.push(["asked", order.map((p, i) => {
+    const r = rates.find(x => x.provider === p);
+    return (i + 1) + ". " + p + (r ? " ($" + r.input_per_m + " in · $" + r.output_per_m + " out" + (r.cache_read_per_m ? " · $" + r.cache_read_per_m + " cached" : "") + " per 1M)" : "");
+  }).join("\n")]);
+  const servedNote = !served ? "not reported" : at === 0 ? served + " (first choice)" : at > 0 ? served + " (fallback: choice " + (at + 1) + ")" : order.length ? served + " (not in the list)" : served;
+  rows.push(["served by", servedNote]);
+  return [el("h3", {}, "Routing"), el("div", { class: "kv" }, rows.flatMap(([k, v]) => [el("span", { class: "k" }, k),
+    el("span", { class: "v" + (at > 0 && k === "served by" ? " warn" : ""), style: { whiteSpace: "pre-line" } }, v)]))];
+}
+
+// costSection breaks a request's cost down.
+function costSection(s) {
+  const a = s.attrs;
+  if (s.kind !== "request" || !a["wisp.cost.source"] || a["wisp.cost.source"] === "unknown") return null;
+  const rows = [["source", a["wisp.cost.source"] === "billed" ? "billed by the endpoint (exact)" : "list price (estimate)"]];
+  if (a["wisp.usage.cost_usd"] != null) rows.push(["billed", usd(a["wisp.usage.cost_usd"])]);
+  if (a["wisp.cost.list_usd"] != null) {
+    rows.push(["at list price", usd(a["wisp.cost.list_usd"])],
+      ["· input", usd(a["wisp.cost.input_usd"]) + " for " + fmtNum((a["gen_ai.usage.input_tokens"] || 0) - (a["wisp.usage.cached_tokens"] || 0)) + " tok"],
+      ["· cached input", usd(a["wisp.cost.cached_input_usd"]) + " for " + fmtNum(a["wisp.usage.cached_tokens"] || 0) + " tok"],
+      ["· output", usd(a["wisp.cost.output_usd"]) + " for " + fmtNum(a["gen_ai.usage.output_tokens"] || 0) + " tok"],
+      ["price", a["wisp.price"]]);
+  }
+  return [el("h3", {}, "Cost"), el("div", { class: "kv" }, rows.flatMap(([k, v]) => [el("span", { class: "k" }, k), el("span", { class: "v" }, v)]))];
+}
+
+// turnMessages loads a top-level turn's messages. The session's messages
+// are cached, and fetched again while the turn runs or when the cache
+// ends before the turn does, since a live session keeps adding them.
+async function turnMessages(s) {
+  if (s.kind !== "turn" || s.parent || s.attrs["wisp.message_index"] == null) return null;
+  const from = s.attrs["wisp.message_index"], n = s.attrs["wisp.messages"], sid = S.sid;
+  let msgs = S.messages;
+  if (!msgs || !s.end || msgs.length < from + (n ?? 1)) {
+    msgs = await getJSON("api/sessions/" + encodeURIComponent(sid) + "/messages");
+    if (sid === S.sid) S.messages = msgs;
+  }
+  return msgs.slice(from, n == null ? undefined : from + n);
+}
+
+// contextSection shows what a request carried and what came in since its
+// agent's previous request: that request's reply and the tool calls in
+// between, sized at a rough four characters a token.
+function contextSection(s) {
+  const c = s.attrs["wisp.context"];
+  if (s.kind !== "request" || !c) return null;
+  const agent = agentOf(s), reqs = ctxSeries(agent), i = reqs.indexOf(s), prev = reqs[i - 1], used = ctxUsed(s);
+  const rows = [
+    ["context", fmtNum(used) + (c.window ? " of " + fmtNum(c.window) + " (" + pctOf(used, c.window) + ")" : "")],
+    ["fixed", fmtNum(c.fixed) + " (prompt, instructions, tools)"],
+    ["history", fmtNum(c.history) + (c.summary ? " (" + fmtNum(c.summary) + " of it the summary)" : "")],
+  ];
+  if (masked(c)) rows.push(["masked", masked(c) + " stand-ins, saving ~" + fmtNum(c.masked_saved)]);
+  const kv = r => r.flatMap(([k, v]) => [el("span", { class: "k" }, k), el("span", { class: "v" }, v)]);
+  const out = [el("h3", {}, "Context"), el("div", { class: "kv" }, kv(rows))];
+  if (!prev) return out;
+  const est = v => Math.round((typeof v === "string" ? v : JSON.stringify(v ?? "")).length / 4);
+  const tools = S.spans.filter(x => x.kind === "tool" && x.start >= prev.start && x.start < s.start && agentOf(x) === agent);
+  const reply = est(prev.attrs["wisp.answer"]);
+  out.push(el("h3", {}, "Since request #" + i + ": " + signed(used - ctxUsed(prev))), el("div", { class: "kv" },
+    reply ? [el("span", { class: "k" }, "reply of #" + i), el("span", { class: "v" }, "≈" + fmtNum(reply))] : null,
+    tools.flatMap(t => [el("span", { class: "k" }, el("a", { class: "link", onclick: () => select(t.id, true) }, t.name)),
+      el("span", { class: "v" }, "≈" + fmtNum(est(t.attrs["gen_ai.tool.call.arguments"]) + est(t.attrs["gen_ai.tool.call.result"])))])));
+  return out;
+}
+
+// renderDetail shows the selected span. A live session reloads every 2 s,
+// so it rebuilds only when the span or the spans around it changed, then
+// swaps the new content in whole, keeping the scroll and open blocks.
+async function renderDetail() {
+  const box = $("dbody"), s = S.byId.get(S.selected);
+  $("app").classList.toggle("with-detail", !!s);
+  const key = s ? [s.id, s.end, s.status, Object.keys(s.attrs).length, S.spans.length, S.spans.filter(x => !x.end).length].join("|") : null;
+  if (key === S.detailKey) return;
+  const refresh = s && S.detailKey?.startsWith(s.id + "|");
+  S.detailKey = key;
+  const token = ++S.detailToken;
+  if (!s) { fill(box); return; }
+  const parts = detailParts(s);
+  if (!refresh) { fill(box, parts); box.scrollTop = 0; } // a new span shows at once, its messages when they come
+  const msgs = await turnMessages(s).catch(() => null);
+  if (token !== S.detailToken) return;
+  const tail = msgs ? messagesSection(msgs) : [];
+  if (!refresh) { box.append(...tail); return; }
+  const open = [...box.querySelectorAll("details")].map(d => d.open), top = box.scrollTop;
+  fill(box, parts, tail);
+  box.querySelectorAll("details").forEach((d, i) => { if (i < open.length) d.open = open[i]; });
+  box.scrollTop = top;
+}
+
+function detailParts(s) {
+  const [a] = sessionRange();
+  const parent = S.byId.get(s.parent);
+  const mini = (k, v) => el("div", { class: "mini" }, el("div", { class: "k" }, k), el("div", { class: "v" }, v));
+  const keys = Object.keys(s.attrs).sort();
+  const inline = keys.filter(k => !TEXT_ATTRS.includes(k) && !METRIC_ATTRS.includes(k));
+  const blocks = TEXT_ATTRS.filter(k => s.attrs[k] != null && s.attrs[k] !== "");
+  const show = v => Array.isArray(v) ? (v.length ? v.join(", ") : "none") : typeof v === "number" ? (Number.isInteger(v) ? v.toLocaleString() : v.toFixed(3))
+    : v && typeof v === "object" ? JSON.stringify(v) : String(v);
+  return [
+    el("div", { class: "d-top" }, el("span", { class: "tag" }, dot(s.kind), s.kind),
+      el("span", { class: "tag " + (s.status || "") }, s.status || "running"),
+      el("button", { title: "Close (Esc)", "aria-label": "Close", onclick: () => select(null) }, "✕")),
+    el("h2", {}, s.name || "(unnamed)"),
+    el("div", { class: "minis" },
+      mini("starts at", "+" + fmtDur(s.start - a)),
+      mini("duration", s.end ? fmtDur(s.end - s.start) : fmtDur(Date.now() - s.start) + "…"),
+      metrics(s).map(([k, v]) => mini(k, v))),
+    contextSection(s),
+    routingSection(s),
+    costSection(s),
+    el("h3", {}, "Details"),
+    el("div", { class: "kv" },
+      el("span", { class: "k" }, "parent"),
+      el("span", { class: "v" }, parent ? el("a", { class: "link", onclick: () => select(parent.id, true) }, parent.kind + " · " + firstLine(parent.name)) : "–"),
+      el("span", { class: "k" }, "span id"), el("span", { class: "v" }, s.id),
+      inline.flatMap(k => [el("span", { class: "k", title: k }, shortKey(k)), el("span", { class: "v" }, show(s.attrs[k]))])),
+    blocks.length ? el("h3", {}, "Content") : null,
+    blocks.map(k => textBlock(TEXT_TITLES[k] || k, s.attrs[k])),
+  ].flat().filter(k => k != null && k !== false);
+}
+
+function messagesSection(msgs) {
+  return [el("h3", {}, "Messages"), ...msgs.map(m => el("div", { class: "msg " + m.role + (m.is_error ? " error" : "") },
+    el("div", { class: "who" }, m.role + (m.is_error ? " · error" : "")),
+    m.content ? textBlock(m.tool_call_id ? "result of " + m.tool_call_id : "text", m.content) : null,
+    (m.tool_calls || []).map(c => textBlock("calls " + c.Name, c.Args ?? {}))))];
+}
+
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "Escape") select(null);
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    const r = rows(), i = r.findIndex(x => x.s.id === S.selected);
+    const next = r[Math.min(r.length - 1, Math.max(0, i + (e.key === "ArrowDown" ? 1 : -1)))];
+    if (next) { select(next.s.id, true); e.preventDefault(); }
+  }
+});
+$("theme").addEventListener("click", () => {
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light");
+  document.documentElement.dataset.theme = cur === "dark" ? "light" : "dark";
+  try { localStorage.setItem("wisp-trace-theme", document.documentElement.dataset.theme); } catch { /* storage off */ }
+});
+try { const t = localStorage.getItem("wisp-trace-theme"); if (t) document.documentElement.dataset.theme = t; } catch { /* storage off */ }
+
+// Drag a pane's edge, or focus it and use the arrow keys, to resize it;
+// double-click or Home resets. Widths persist and are re-clamped when the
+// window shrinks, so the middle column keeps some room.
+const PANES = { side: { min: 200, def: 300, max: .4 }, detail: { min: 300, def: 440, max: .55 } };
+const paneWidth = name => parseFloat(getComputedStyle($("app")).getPropertyValue("--" + name + "-w")) || PANES[name].def;
+function setPane(name, w) {
+  const p = PANES[name];
+  w = Math.round(Math.max(p.min, Math.min(w, innerWidth * p.max)));
+  $("app").style.setProperty("--" + name + "-w", w + "px");
+  $("rz-" + name).setAttribute("aria-valuenow", w);
+  return w;
+}
+const savePane = (name, w) => { try { w == null ? localStorage.removeItem("wisp-trace-" + name) : localStorage.setItem("wisp-trace-" + name, w); } catch { /* storage off */ } };
+for (const h of document.querySelectorAll(".resizer")) {
+  const name = h.dataset.pane, grow = name === "side" ? 1 : -1;
+  let w = null;
+  h.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    h.setPointerCapture(e.pointerId);
+    h.classList.add("dragging"); document.body.classList.add("resizing");
+  });
+  h.addEventListener("pointermove", e => {
+    if (h.hasPointerCapture(e.pointerId)) w = setPane(name, name === "side" ? e.clientX : innerWidth - e.clientX);
+  });
+  h.addEventListener("lostpointercapture", () => {
+    h.classList.remove("dragging"); document.body.classList.remove("resizing");
+    if (w) savePane(name, w);
+  });
+  const reset = () => { setPane(name, PANES[name].def); savePane(name, null); };
+  h.addEventListener("dblclick", reset);
+  h.addEventListener("keydown", e => {
+    if (e.key === "Home") reset();
+    else if (e.key === "ArrowLeft" || e.key === "ArrowRight") savePane(name, setPane(name, paneWidth(name) + (e.key === "ArrowRight" ? 24 : -24) * grow));
+    else return;
+    e.preventDefault();
+  });
+  h.setAttribute("aria-valuemin", PANES[name].min);
+  try { const v = +localStorage.getItem("wisp-trace-" + name); setPane(name, v || PANES[name].def); } catch { setPane(name, PANES[name].def); }
+}
+addEventListener("resize", () => { for (const name in PANES) setPane(name, paneWidth(name)); });
+$("ssearch").addEventListener("input", e => { S.sfilter = e.target.value.toLowerCase(); renderSessions(); });
+// The chart is drawn to its width: redraw it when the panes change.
+let chartFrame;
+new ResizeObserver(() => { cancelAnimationFrame(chartFrame); chartFrame = requestAnimationFrame(renderContext); }).observe($("view"));
+
+loadSessions().catch(err => fill($("timeline"), el("div", { class: "empty" }, String(err))));
+setInterval(() => loadSessions().catch(() => {}), 5000);
+</script>
+</body>
+</html>

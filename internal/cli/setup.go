@@ -26,7 +26,8 @@ type Config struct {
 	Provider        string // OpenRouter upstream provider to pin, from --provider
 	Cheapest        bool   // OpenRouter: route to the model's two cheapest providers, from --cheapest
 	SkipPermissions bool
-	ContextWindow   int // from --context-window; overrides what the endpoint reports
+	ContextWindow   int  // from --context-window; overrides what the endpoint reports
+	NoSummarize     bool // from --no-summarize: masking only
 	MaxIterations   int
 	Vision          bool
 	Price           model.Pricing // from --price; overrides what the endpoint reports
@@ -66,6 +67,7 @@ func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision 
 		System:        prompt.Build(workDir, time.Now()),
 		FinishCheck:   builtin.TodoReminder,
 		MaxIterations: cfg.MaxIterations,
+		AutoCompact:   !cfg.NoSummarize,
 	}
 	applyModel(loop, vision, info)
 	return loop, nil

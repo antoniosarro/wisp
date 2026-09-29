@@ -123,6 +123,7 @@ func applyModel(loop *core.Loop, vision *atomic.Bool, info model.Info) {
 	loop.ContextWindow, loop.MaxOutput = info.ContextWindow, info.MaxOutput
 	loop.Price = info.Price
 	loop.NoTools = info.Tools == model.Unsupported
+	loop.Presummarize = info.Local // idle time on a local server is free
 	vision.Store(info.Vision == model.Supported)
 }
 

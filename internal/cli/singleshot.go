@@ -33,6 +33,7 @@ func runSingleShot(ctx context.Context, cfg Config, provider *openaicompat.Clien
 		return err
 	}
 
+	loop.Presummarize = false // the process exits after one turn: nothing would use it
 	loop.OnEvent, loop.OnToolResult = newRenderer(os.Stdout)
 	var last core.StepStats
 	loop.OnStats = func(s core.StepStats) { last = s }

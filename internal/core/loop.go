@@ -62,6 +62,16 @@ type Loop struct {
 	MaxOutput     int           // model's output-token cap; 0 if unknown
 	Price         model.Pricing // the model's list price, for requests the endpoint doesn't bill
 	NoTools       bool          // the model can't call tools: send none
+	AutoCompact   bool          // summarize history when it nears the window
+	// Presummarize generates the next summary in the background between
+	// turns. Worth it where idle time is free: a local, interactive model.
+	Presummarize bool
+
+	// Compacted, if set, is the latest compaction: requests send its
+	// summary in place of History[:Compacted.FirstKept]. Compactions are
+	// all of the session's, oldest first, for frontends to mark.
+	Compacted   *Compaction
+	Compactions []Compaction
 
 	// FinishCheck, if set, runs when the model gives a final answer, with
 	// this turn's messages. A non-empty result is sent back as a reminder
@@ -71,16 +81,24 @@ type Loop struct {
 	OnEvent      func(model.Event)                        // every streamed event, as it arrives
 	OnToolResult func(model.ToolCall, tool.Result, error) // each call as it finishes, skipped ones included
 	OnStats      func(StepStats)                          // after each request, when its stream ends
+	OnCompact    func(CompactEvent)                       // when a compaction starts and ends
 
 	stats  StepStats       // session-cumulative totals
 	ran    map[string]bool // read-only calls run this turn since the last risky one (callKey)
 	tokens tokenCache      // local token estimates (budget.go)
+	pre    *presummary     // a summary generated in the background, if any
 }
 
 // Run appends userInput as a user turn and drives the provider/tool loop
 // until a plain-text answer comes back. Past MaxIterations, it asks for a
 // summary of the work so far instead of dropping it (wrapUp).
 func (l *Loop) Run(ctx context.Context, userInput string) (answer string, err error) {
+	l.yieldPresummary(userInput)
+	defer func() {
+		if err == nil {
+			l.presummarize() // while the server would otherwise sit idle
+		}
+	}()
 	if err := l.closeOpenTurn(); err != nil {
 		return "", err
 	}
@@ -228,30 +246,44 @@ func (l *Loop) appendAndPersist(msg model.Message) error {
 	return nil
 }
 
-// Messages returns what a request sends: the system prompt, then History
-// with masked output replaced by its stand-in.
+// Messages returns what a request sends: the system prompt, the summary of
+// compacted history, then the rest of History with masked output replaced
+// by its stand-in. A summary followed by a user message is merged into it,
+// so roles keep alternating for strict chat templates.
 func (l *Loop) Messages() []model.Message {
-	msgs := make([]model.Message, 0, len(l.History)+1)
+	msgs := make([]model.Message, 0, len(l.History)+2)
 	if l.System != "" {
 		msgs = append(msgs, model.Message{Role: model.RoleSystem, Content: l.System})
 	}
-	for _, msg := range l.History {
+	rest := l.History
+	if c := l.Compacted; c != nil {
+		rest = l.History[c.FirstKept:]
+		summary := model.Message{Role: model.RoleUser, Content: c.text}
+		if len(rest) > 0 && rest[0].Role == model.RoleUser {
+			summary.Content += "\n\n" + rest[0].Content
+			rest = rest[1:]
+		}
+		msgs = append(msgs, summary)
+	}
+	for _, msg := range rest {
 		msgs = append(msgs, sent(msg))
 	}
 	return msgs
 }
 
 // stepFitting runs step, first masking old tool output when the request
-// would take History past the mask trigger (Fit). When the backend rejects
-// a request as too long anyway, it learns the window from the error if the
-// server states it, then retries after each of: masking down to the
-// target, and masking everything it can.
+// would take History past the mask trigger, and summarizing it (with
+// AutoCompact) when masking leaves it past the summarize trigger (Fit).
+// When the backend rejects a request as too long anyway, it learns the
+// window from the error if the server states it, then retries after each
+// of: masking down to the target, masking everything it can, and
+// summarizing.
 func (l *Loop) stepFitting(ctx context.Context, toolChoice string) (string, []model.ToolCall, bool, error) {
 	if err := l.Fit(ctx); err != nil {
 		return "", nil, false, err
 	}
 	text, calls, truncated, err := l.step(ctx, toolChoice)
-	for attempt := 0; attempt < 2 && errors.Is(err, model.ErrContextOverflow); attempt++ {
+	for attempt := 0; attempt < 3 && errors.Is(err, model.ErrContextOverflow); attempt++ {
 		if window := windowFromError(err); window > 0 {
 			l.ContextWindow = window
 		}
@@ -259,9 +291,11 @@ func (l *Loop) stepFitting(ctx context.Context, toolChoice string) (string, []mo
 		switch attempt {
 		case 0:
 			changed = l.mask(l.historyBudget()*maskTargetPct/100, true, 0)
-		default:
+		case 1:
 			// The estimate is off, or the protected steps alone overflow.
 			changed = l.mask(0, false, 0)
+		default:
+			changed = l.AutoCompact && l.Compact(ctx, "") == nil
 		}
 		if ctx.Err() != nil {
 			return "", nil, false, ctx.Err()

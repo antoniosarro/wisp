@@ -99,7 +99,7 @@ func (l *Loop) mask(target int, protect bool, minFree int) bool {
 		total -= m.saved
 	}
 	for class := classSuperseded; class <= classOther; class++ {
-		for i := 0; i < end && total > float64(target); i++ {
+		for i := l.keptFrom(); i < end && total > float64(target); i++ {
 			msg := l.History[i]
 			if class == classFileBody {
 				for j, call := range msg.ToolCalls {

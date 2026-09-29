@@ -56,17 +56,17 @@ func messageTokens(msg model.Message) int {
 	return n
 }
 
-// historyTokens estimates what requests send of History, counting only
-// messages added since the last call.
+// historyTokens estimates what requests send of History, the summary
+// included, counting only messages added since the last call.
 func (l *Loop) historyTokens() int {
 	if len(l.History) == 0 {
-		return 0
+		return l.summaryTokens()
 	}
-	if l.tokens.counted > len(l.History) || &l.History[0] != l.tokens.base {
+	if l.tokens.counted > len(l.History) || l.tokens.counted < l.keptFrom() || &l.History[0] != l.tokens.base {
 		l.tokens.counted, l.tokens.base = 0, &l.History[0]
 	}
 	if l.tokens.counted == 0 {
-		l.tokens.history = 0
+		l.tokens.counted, l.tokens.history = l.keptFrom(), l.summaryTokens()
 	}
 	for _, msg := range l.History[l.tokens.counted:] {
 		l.tokens.history += messageTokens(msg)
@@ -214,14 +214,20 @@ func (l *Loop) clearAtLeast() int {
 
 // Fit prepares History for the next request as a step does: past the mask
 // trigger, it masks old tool output down to the target, in one batch worth
-// the prefix cache it discards. Evals use it to build the context a
-// request would send without sending one. It fails only when ctx ends.
+// the prefix cache it discards, and, with AutoCompact, summarizes past the
+// summarize trigger. Evals use it to build the context a request would
+// send without sending one. It fails only when ctx ends.
 func (l *Loop) Fit(ctx context.Context) error {
 	budget := l.historyBudget()
 	if budget == 0 || l.projectedHistory() <= budget*maskTriggerPct/100 {
 		return nil
 	}
 	l.mask(budget*maskTargetPct/100, true, l.clearAtLeast())
+	if l.AutoCompact && l.projectedHistory() > budget*summarizePct/100 {
+		// Compact falls back to the ledger when the summary fails, so
+		// only ctx ending is an error here.
+		_ = l.Compact(ctx, "")
+	}
 	return ctx.Err()
 }
 
@@ -234,22 +240,32 @@ func (l *Loop) ContextUsage() ContextStats { return l.contextStats() }
 func (l *Loop) contextStats() ContextStats {
 	scale := func(n int) int { return int(float64(n) * l.ratio()) }
 	c := ContextStats{
-		Window:    l.ContextWindow,
-		Fixed:     scale(l.fixedTokens()),
-		Budget:    l.historyBudget(),
-		History:   l.projectedHistory(),
-		Ratio:     l.ratio(),
-		Prompt:    scale(l.tokens.systemParts[0]),
-		Project:   scale(l.tokens.systemParts[1]),
-		MCPPrompt: scale(l.tokens.systemParts[2]),
-		Tools:     make(map[string]int, len(l.tokens.toolTokens)),
+		Window:      l.ContextWindow,
+		Fixed:       scale(l.fixedTokens()),
+		Budget:      l.historyBudget(),
+		History:     l.projectedHistory(),
+		Ratio:       l.ratio(),
+		Compactions: len(l.Compactions),
+		Summary:     scale(l.summaryTokens()),
+		Prompt:      scale(l.tokens.systemParts[0]),
+		Project:     scale(l.tokens.systemParts[1]),
+		MCPPrompt:   scale(l.tokens.systemParts[2]),
+		Tools:       make(map[string]int, len(l.tokens.toolTokens)),
 	}
 	if c.Window > 0 {
 		c.Reserve = l.reserve()
 	}
-	c.Messages = c.History
+	c.Messages = c.History - c.Summary
 	for name, n := range l.tokens.toolTokens {
 		c.Tools[name] = scale(n)
+	}
+	if pre := l.pre; pre != nil {
+		c.Presummary = "generating"
+		select {
+		case <-pre.done:
+			c.Presummary = "ready"
+		default:
+		}
 	}
 	_, c.MaskedSaved = l.maskedSaved()
 	for _, msg := range l.History {

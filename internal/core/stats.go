@@ -54,23 +54,28 @@ type ContextStats struct {
 	History int     `json:"history"` // what history uses
 	Ratio   float64 `json:"ratio"`   // server tokens per local estimate token
 
-	MaskedResults int `json:"masked_results"` // tool results sent as stand-ins
-	MaskedCalls   int `json:"masked_calls"`   // write and edit calls sent without their bodies
-	MaskedSaved   int `json:"masked_saved"`   // tokens masking saves
+	MaskedResults int    `json:"masked_results"` // tool results sent as stand-ins
+	MaskedCalls   int    `json:"masked_calls"`   // write and edit calls sent without their bodies
+	MaskedSaved   int    `json:"masked_saved"`   // tokens masking saves
+	Compactions   int    `json:"compactions"`
+	Presummary    string `json:"presummary,omitempty"` // "", "generating", or "ready"
 
 	// Where the tokens go. Fixed is Prompt, Project, MCPPrompt, and the
-	// tools; History is Messages.
+	// tools; History is Summary and Messages.
 	Prompt    int            `json:"prompt"`     // the system prompt's own text
 	Project   int            `json:"project"`    // project instructions (AGENTS.md)
 	MCPPrompt int            `json:"mcp_prompt"` // the system prompt's MCP servers section
 	Tools     map[string]int `json:"tools"`      // each tool definition, by name
-	Messages  int            `json:"messages"`   // the messages sent
+	Summary   int            `json:"summary"`    // the compaction summary
+	Messages  int            `json:"messages"`   // messages sent verbatim or masked
 	Reserve   int            `json:"reserve"`    // room kept for the reply; 0 when the window is unknown
 }
 
-// MaskTrigger is the history size, in tokens, past which old tool output
-// is masked before the next request.
-func (c ContextStats) MaskTrigger() int { return c.Budget * maskTriggerPct / 100 }
+// MaskTrigger and SummarizeTrigger are the history sizes, in tokens, past
+// which old tool output is masked, and history summarized, before the next
+// request.
+func (c ContextStats) MaskTrigger() int      { return c.Budget * maskTriggerPct / 100 }
+func (c ContextStats) SummarizeTrigger() int { return c.Budget * summarizePct / 100 }
 
 // CacheHitRate is the share of prompt tokens served from cache, as a
 // percentage; ok is false when nothing was reported.

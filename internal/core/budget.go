@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"regexp"
 	"strconv"
@@ -39,12 +40,15 @@ type tokenCache struct {
 	toolDefs         int            // all tool definitions
 	toolTokens       map[string]int // each tool definition
 	toolDefsCounted  int            // tools counted into toolDefs
+	masked           int            // masked results and calls maskedSaved counts
+	maskedSaved      int            // tokens masking saved, estimated
 	ratio            float64        // backend tokens per estimated token; 0 until a request reports usage
 }
 
-// messageTokens estimates msg as a request carries it: content, tool calls
-// with their arguments, and images.
+// messageTokens estimates msg as a request carries it: content or its
+// stand-in, tool calls with their arguments, and images.
 func messageTokens(msg model.Message) int {
+	msg = sent(msg)
 	n := messageOverhead + tokencount.Count(msg.Content) + len(msg.Images)*imageTokens
 	for _, call := range msg.ToolCalls {
 		n += tokencount.Count(call.Name) + tokencount.Count(string(call.Args))
@@ -172,6 +176,55 @@ func (l *Loop) projectedHistory() int {
 	return int(float64(l.historyTokens()) * l.ratio())
 }
 
+// maskedSaved estimates the tokens masking saves, recounted only when
+// what is masked changes.
+func (l *Loop) maskedSaved() (masked, saved int) {
+	for _, msg := range l.History {
+		if msg.Elided != "" {
+			masked++
+		}
+		for _, c := range msg.ToolCalls {
+			if c.Elided != nil {
+				masked++
+			}
+		}
+	}
+	if masked != l.tokens.masked {
+		saved = 0
+		for _, msg := range l.History {
+			if msg.Elided != "" {
+				saved += tokencount.Count(msg.Content) - tokencount.Count(msg.Elided)
+			}
+			for _, c := range msg.ToolCalls {
+				if c.Elided != nil {
+					saved += tokencount.Count(string(c.Args)) - tokencount.Count(string(c.Elided))
+				}
+			}
+		}
+		l.tokens.masked, l.tokens.maskedSaved = masked, saved
+	}
+	return masked, int(float64(l.tokens.maskedSaved) * l.ratio())
+}
+
+// clearAtLeast is the fewest tokens a proactive masking batch must free
+// to be worth discarding the backend's prefix cache.
+func (l *Loop) clearAtLeast() int {
+	return max(2048, l.historyBudget()/10)
+}
+
+// Fit prepares History for the next request as a step does: past the mask
+// trigger, it masks old tool output down to the target, in one batch worth
+// the prefix cache it discards. Evals use it to build the context a
+// request would send without sending one. It fails only when ctx ends.
+func (l *Loop) Fit(ctx context.Context) error {
+	budget := l.historyBudget()
+	if budget == 0 || l.projectedHistory() <= budget*maskTriggerPct/100 {
+		return nil
+	}
+	l.mask(budget*maskTargetPct/100, true, l.clearAtLeast())
+	return ctx.Err()
+}
+
 // ContextUsage snapshots the context budget and where its tokens go. It
 // reads the loop's state, so frontends call it between turns and rely on
 // the snapshot in StepStats during one.
@@ -197,6 +250,17 @@ func (l *Loop) contextStats() ContextStats {
 	c.Messages = c.History
 	for name, n := range l.tokens.toolTokens {
 		c.Tools[name] = scale(n)
+	}
+	_, c.MaskedSaved = l.maskedSaved()
+	for _, msg := range l.History {
+		if msg.Elided != "" {
+			c.MaskedResults++
+		}
+		for _, call := range msg.ToolCalls {
+			if call.Elided != nil {
+				c.MaskedCalls++
+			}
+		}
 	}
 	return c
 }

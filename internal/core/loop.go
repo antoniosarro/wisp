@@ -85,6 +85,7 @@ func (l *Loop) Run(ctx context.Context, userInput string) (answer string, err er
 		return "", err
 	}
 	l.dropImages()
+	l.restoreSpills()
 	turnStart := len(l.History)
 	l.ran = map[string]bool{}
 	if err := l.appendAndPersist(model.Message{Role: model.RoleUser, Content: userInput}); err != nil {
@@ -227,24 +228,49 @@ func (l *Loop) appendAndPersist(msg model.Message) error {
 	return nil
 }
 
-// Messages returns what a request sends: the system prompt, then History.
+// Messages returns what a request sends: the system prompt, then History
+// with masked output replaced by its stand-in.
 func (l *Loop) Messages() []model.Message {
 	msgs := make([]model.Message, 0, len(l.History)+1)
 	if l.System != "" {
 		msgs = append(msgs, model.Message{Role: model.RoleSystem, Content: l.System})
 	}
-	return append(msgs, l.History...)
+	for _, msg := range l.History {
+		msgs = append(msgs, sent(msg))
+	}
+	return msgs
 }
 
-// stepFitting runs step. When the backend rejects the request as too
-// long, it learns the window from the error if the server states it, so
-// later tool results are clipped to fit.
+// stepFitting runs step, first masking old tool output when the request
+// would take History past the mask trigger (Fit). When the backend rejects
+// a request as too long anyway, it learns the window from the error if the
+// server states it, then retries after each of: masking down to the
+// target, and masking everything it can.
 func (l *Loop) stepFitting(ctx context.Context, toolChoice string) (string, []model.ToolCall, bool, error) {
+	if err := l.Fit(ctx); err != nil {
+		return "", nil, false, err
+	}
 	text, calls, truncated, err := l.step(ctx, toolChoice)
-	if errors.Is(err, model.ErrContextOverflow) {
+	for attempt := 0; attempt < 2 && errors.Is(err, model.ErrContextOverflow); attempt++ {
 		if window := windowFromError(err); window > 0 {
 			l.ContextWindow = window
 		}
+		var changed bool
+		switch attempt {
+		case 0:
+			changed = l.mask(l.historyBudget()*maskTargetPct/100, true, 0)
+		default:
+			// The estimate is off, or the protected steps alone overflow.
+			changed = l.mask(0, false, 0)
+		}
+		if ctx.Err() != nil {
+			return "", nil, false, ctx.Err()
+		}
+		if changed {
+			text, calls, truncated, err = l.step(ctx, toolChoice)
+		}
+	}
+	if errors.Is(err, model.ErrContextOverflow) {
 		err = fmt.Errorf("%w; the conversation no longer fits, start a new session", err)
 	}
 	return text, calls, truncated, err

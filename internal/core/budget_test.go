@@ -178,19 +178,83 @@ func TestWindowFromError(t *testing.T) {
 	}
 }
 
-// Until masking exists, a rejected request fails the turn, but the window
-// the server states is kept, so later results are clipped to it.
+func TestElidesBeforeSendingPastTheTrigger(t *testing.T) {
+	big := strings.Repeat("some line of source code\n", 100) // ~600 tokens
+	p := &budgetProvider{ratio: 1}
+	l := &Loop{Provider: p, ContextWindow: 16384, History: readHistory(15, big)}
+	budget := l.historyBudget()
+	if l.projectedHistory() <= budget*maskTriggerPct/100 {
+		t.Fatalf("history %d doesn't pass the trigger of budget %d", l.projectedHistory(), budget)
+	}
+
+	if _, err := l.Run(context.Background(), "next"); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) != 1 {
+		t.Fatalf("%d requests, want 1: elision must happen before sending", len(p.reqs))
+	}
+	if got, target := l.projectedHistory(), budget*maskTargetPct/100; got > target {
+		t.Errorf("history %d after elision, want at most the target %d", got, target)
+	}
+	msgs := p.reqs[0].Messages
+	if !strings.HasPrefix(msgs[2].Content, "[read f0.go") {
+		t.Errorf("oldest result not elided: %.60q", msgs[2].Content)
+	}
+	if last := msgs[len(msgs)-3]; last.Content != big {
+		t.Errorf("newest result elided though the target was reached: %.60q", last.Content)
+	}
+}
+
+// A rejected request is retried after masking, with the window the server
+// states.
 func TestOverflowLearnsWindow(t *testing.T) {
+	big := strings.Repeat("some line of source code\n", 100)
 	overflow := fmt.Errorf("400: This model's maximum context length is 8192 tokens: %w", model.ErrContextOverflow)
 	p := &budgetProvider{ratio: 1, errs: []error{overflow}}
-	l := &Loop{Provider: p}
+	l := &Loop{Provider: p, History: readHistory(15, big)}
 
-	_, err := l.Run(context.Background(), "next")
-	if !errors.Is(err, model.ErrContextOverflow) || !strings.Contains(err.Error(), "no longer fits") {
-		t.Fatalf("Run = %v, want the overflow, explained", err)
+	if _, err := l.Run(context.Background(), "next"); err != nil {
+		t.Fatal(err)
 	}
 	if l.ContextWindow != 8192 {
 		t.Errorf("window = %d, want 8192 from the error", l.ContextWindow)
+	}
+	if n := len(p.reqs); n != 2 {
+		t.Errorf("%d requests, want the rejected one and one retry", n)
+	}
+	if got, target := l.projectedHistory(), l.historyBudget()*maskTargetPct/100; got > target {
+		t.Errorf("history %d after the retry, want at most %d", got, target)
+	}
+}
+
+// A rejection while History is already under the target means the
+// estimate is off: elide everything rather than fail.
+func TestOverflowUnderTargetElidesEverything(t *testing.T) {
+	big := strings.Repeat("some line of source code\n", 100)
+	overflow := fmt.Errorf("400: maximum context length exceeded: %w", model.ErrContextOverflow)
+	p := &budgetProvider{ratio: 1, errs: []error{overflow}}
+	l := &Loop{Provider: p, ContextWindow: 65536, History: readHistory(15, big)}
+
+	if _, err := l.Run(context.Background(), "next"); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(p.reqs); n != 2 {
+		t.Fatalf("%d requests, want 2", n)
+	}
+	for _, m := range p.reqs[1].Messages {
+		if m.Role == model.RoleTool && !strings.HasPrefix(m.Content, "[read") {
+			t.Errorf("result not elided on the last retry: %.60q", m.Content)
+		}
+	}
+}
+
+// An overflow nothing can be masked away from fails the turn, explained.
+func TestOverflowWithNothingToMask(t *testing.T) {
+	overflow := fmt.Errorf("400: maximum context length exceeded: %w", model.ErrContextOverflow)
+	p := &budgetProvider{ratio: 1, errs: []error{overflow}}
+	_, err := (&Loop{Provider: p}).Run(context.Background(), "next")
+	if !errors.Is(err, model.ErrContextOverflow) || !strings.Contains(err.Error(), "no longer fits") || len(p.reqs) != 1 {
+		t.Fatalf("Run = %v after %d requests, want the overflow explained, without retrying", err, len(p.reqs))
 	}
 }
 
@@ -248,6 +312,14 @@ func TestContextUsageBreakdown(t *testing.T) {
 	}
 	if (&Loop{}).ContextUsage().Reserve != 0 {
 		t.Error("unknown window: a reserve was reported")
+	}
+
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	l.History = readHistory(3, strings.Repeat("some line of source code\n", 100))
+	l.mask(0, false, 0)
+	c = l.ContextUsage()
+	if c.MaskedResults != 3 || c.MaskedSaved < 3*400 {
+		t.Errorf("masked %d results saving %d tokens", c.MaskedResults, c.MaskedSaved)
 	}
 }
 

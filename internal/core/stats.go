@@ -54,6 +54,10 @@ type ContextStats struct {
 	History int     `json:"history"` // what history uses
 	Ratio   float64 `json:"ratio"`   // server tokens per local estimate token
 
+	MaskedResults int `json:"masked_results"` // tool results sent as stand-ins
+	MaskedCalls   int `json:"masked_calls"`   // write and edit calls sent without their bodies
+	MaskedSaved   int `json:"masked_saved"`   // tokens masking saves
+
 	// Where the tokens go. Fixed is Prompt, Project, MCPPrompt, and the
 	// tools; History is Messages.
 	Prompt    int            `json:"prompt"`     // the system prompt's own text
@@ -63,6 +67,10 @@ type ContextStats struct {
 	Messages  int            `json:"messages"`   // the messages sent
 	Reserve   int            `json:"reserve"`    // room kept for the reply; 0 when the window is unknown
 }
+
+// MaskTrigger is the history size, in tokens, past which old tool output
+// is masked before the next request.
+func (c ContextStats) MaskTrigger() int { return c.Budget * maskTriggerPct / 100 }
 
 // CacheHitRate is the share of prompt tokens served from cache, as a
 // percentage; ok is false when nothing was reported.

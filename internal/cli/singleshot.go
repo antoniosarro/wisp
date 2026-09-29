@@ -6,7 +6,9 @@ import (
 	"io"
 	"os"
 	"sync/atomic"
+	"time"
 
+	"github.com/antoniosarro/wisp/internal/agent"
 	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/model/openaicompat"
@@ -24,7 +26,7 @@ const (
 // runSingleShot runs one turn, streaming to stdout and prompting on stdin
 // for risky tool calls, then reports the session's usage on stderr.
 func runSingleShot(ctx context.Context, cfg Config, provider *openaicompat.Client, info model.Info, prompt string) error {
-	loop, cleanup, err := newLoop(cfg, provider, info, new(atomic.Bool), permission.TerminalPrompter{})
+	loop, cleanup, err := newLoop(cfg, provider, info, new(atomic.Bool), permission.TerminalPrompter{}, printAgentEvent)
 	if err != nil {
 		return err
 	}
@@ -60,6 +62,19 @@ func printUsageSummary(w io.Writer, s core.StepStats, info model.Info) {
 	}
 	_, _ = fmt.Fprintf(w, "wisp: %d requests, prompt %d (%s), completion %d%s\n",
 		s.RequestCount, s.SessionPromptTokens, cache, s.SessionCompletionTokens, cost)
+}
+
+// printAgentEvent reports when sub-agents start and finish; their own
+// steps aren't printed, only the report the main agent gets.
+func printAgentEvent(e agent.Event) {
+	switch {
+	case e.Status == agent.Running && e.Activity == "starting":
+		fmt.Printf("\n%s[agent %s] %s%s\n", dim, e.Agent, termsafe.Strip(e.Task), reset)
+	case e.Status == agent.Done:
+		fmt.Printf("%s[agent %s] done in %s after %d tool call(s)%s\n", dim, e.Agent, e.Took.Round(time.Second), len(e.Steps), reset)
+	case e.Status == agent.Failed:
+		fmt.Printf("%s[agent %s] failed: %s%s\n", dim, e.Agent, termsafe.Strip(fmt.Sprint(e.Err)), reset)
+	}
 }
 
 // newRenderer returns loop callbacks writing streamed text, dimmed

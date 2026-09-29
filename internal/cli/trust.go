@@ -6,27 +6,34 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"golang.org/x/term"
 
+	"github.com/antoniosarro/wisp/internal/agent"
 	"github.com/antoniosarro/wisp/internal/mcp"
 	"github.com/antoniosarro/wisp/internal/termsafe"
 )
 
 // A cloned repository's .wisp config could otherwise act as soon as wisp
-// starts: its mcp.json runs commands as you. So it is used only once the
+// starts: its mcp.json runs commands as you, and its agent files could
+// send your key to an endpoint they name. So it is used only once the
 // user trusts it, and trusting it is remembered by the config's hash.
 
 // projectConfigFiles lists the files of workDir's .wisp that act on
-// launch: mcp.json starts servers.
+// launch or choose where keys go: mcp.json starts servers, and agent
+// files may name an endpoint and a key.
 func projectConfigFiles(workDir string) []string {
+	var files []string
 	if _, err := os.Stat(projectPath(workDir, "mcp.json")); err == nil {
-		return []string{projectPath(workDir, "mcp.json")}
+		files = append(files, projectPath(workDir, "mcp.json"))
 	}
-	return nil
+	agents, _ := filepath.Glob(projectPath(workDir, "agents", "*.md"))
+	return append(files, agents...)
 }
 
 // configHash identifies the files' names and contents, so an edit asks
@@ -63,7 +70,7 @@ func trustProject(workDir string, force bool, in io.Reader, out io.Writer, inter
 		}
 		_, _ = fmt.Fprintf(out, "wisp: this project has its own configuration in %s:\n", projectPath(workDir))
 		describeProjectConfig(workDir, out)
-		_, _ = fmt.Fprint(out, "Trust it? Its MCP servers run as you. [y/N] ")
+		_, _ = fmt.Fprint(out, "Trust it? MCP servers run as you, and agents may send keys to the endpoints they name. [y/N] ")
 		if a := strings.ToLower(strings.TrimSpace(readLine(in))); a != "y" && a != "yes" {
 			_, _ = fmt.Fprintln(out, "wisp: ignoring it this time; you'll be asked again")
 			return false
@@ -118,4 +125,29 @@ func describeProjectConfig(workDir string, out io.Writer) {
 			_, _ = fmt.Fprintf(out, "  MCP server %s connects to: %s\n", termsafe.Show(name), termsafe.Show(s.URL))
 		}
 	}
+	specs, err := agent.Load(projectPath(workDir, "agents"))
+	if err != nil {
+		_, _ = fmt.Fprintf(out, "  agents: unreadable: %s\n", termsafe.Show(err.Error()))
+	}
+	for _, s := range specs {
+		var where []string
+		if s.BaseURL != "" {
+			where = append(where, "endpoint "+s.BaseURL)
+		}
+		if s.APIKeyEnv != "" {
+			where = append(where, "key from $"+s.APIKeyEnv)
+		}
+		if len(where) == 0 {
+			where = append(where, "the main endpoint")
+		}
+		_, _ = fmt.Fprintf(out, "  agent %s: %s\n", s.Name, termsafe.Show(strings.Join(where, ", ")))
+	}
+}
+
+// sameHost says whether two endpoint URLs share scheme and host, i.e.
+// whether the main key may be sent to b.
+func sameHost(a, b string) bool {
+	ua, errA := url.Parse(a)
+	ub, errB := url.Parse(b)
+	return errA == nil && errB == nil && ua.Scheme == ub.Scheme && strings.EqualFold(ua.Host, ub.Host)
 }

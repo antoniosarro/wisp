@@ -1,0 +1,36 @@
+# A sub-agent from the global agents directory: the main agent delegates a
+# task through the agent tool, the sub-agent runs its own loop with its
+# own instructions and tools, and only its report comes back.
+
+mkdir .config/wisp/agents
+cp explorer.md .config/wisp/agents/explorer.md
+fakemodel model.yaml
+exec wisp 'how many notes are there?'
+stdout '\[agent explorer\] count the notes'
+stdout '\[agent explorer\] done in .* after 1 tool call\(s\)'
+stdout 'The explorer found 2 notes\.'
+grep 'You count things\.' requests.jsonl
+grep '"name":"agent"' requests.jsonl
+requests count 4
+
+-- explorer.md --
+---
+name: explorer
+description: Counts files.
+tools: [ls]
+---
+You count things.
+-- notes/a.txt --
+a
+-- notes/b.txt --
+b
+-- model.yaml --
+rules:
+  - when: {contains: how many notes}
+    reply: {tool_calls: [{name: agent, args: {agent: explorer, task: count the notes}}]}
+  - when: {contains: count the notes}
+    reply: {tool_calls: [{name: ls, args: {path: notes}}]}
+  - when: {contains: b.txt}
+    reply: {text: "2 notes: a.txt and b.txt"}
+  - when: {contains: "2 notes: a.txt"}
+    reply: {text: "The explorer found 2 notes."}

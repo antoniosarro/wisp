@@ -33,7 +33,7 @@ type Config struct {
 	ContextWindow   int  // from --context-window; overrides what the endpoint reports
 	NoSummarize     bool // from --no-summarize: masking only
 	// TrustProject says the project's .wisp config (MCP servers) may be
-	// used. Until wisp can ask (project trust), it is never set.
+	// used: --trust-project, or the user's answer (trust.go).
 	TrustProject  bool
 	MaxIterations int
 	Vision        bool

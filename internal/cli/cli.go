@@ -49,6 +49,7 @@ func run() error {
 	flag.StringVar(&cfg.ResumeID, "resume", "", "resume a previous session by id (see --sessions)")
 	flag.StringVar(&cfg.Provider, "provider", os.Getenv("WISP_PROVIDER"), "OpenRouter only: send every request to this upstream provider, e.g. deepinfra (default: $WISP_PROVIDER, else the cheapest zero-data-retention one)")
 	flag.BoolVar(&cfg.Cheapest, "cheapest", false, "OpenRouter only: look up the model's two cheapest zero-data-retention providers and route only to them, cheapest first, in case account preferences override the price sort")
+	flag.BoolVar(&cfg.TrustProject, "trust-project", false, "use this project's .wisp/mcp.json without asking, and remember that (for scripts; wisp asks in a terminal)")
 	flag.BoolVar(&cfg.SkipPermissions, "dangerously-skip-permissions", false, "skip permission prompts (dangerous)")
 	flag.BoolVar(&cfg.Vision, "vision", false, "show image files to the model even when the endpoint doesn't report image input")
 	flag.IntVar(&cfg.ContextWindow, "context-window", 0, "context window in tokens, overriding what the endpoint reports")
@@ -112,6 +113,9 @@ func run() error {
 	if prompt == "" {
 		flag.Usage()
 		return errors.New("no prompt given")
+	}
+	if wd, err := os.Getwd(); err == nil {
+		cfg.TrustProject = trustProject(wd, cfg.TrustProject, os.Stdin, os.Stderr, interactiveTerminal())
 	}
 	models, err := resolveModel(ctx, &cfg, provider)
 	if err != nil {

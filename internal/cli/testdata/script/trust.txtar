@@ -1,0 +1,32 @@
+# A project's own mcp.json runs commands as you, so it is used only once
+# trusted. Without a terminal to ask on, it is ignored with a notice;
+# --trust-project trusts it and remembers that, until it changes.
+
+cp mcp.json .wisp/mcp.json
+fakemodel model.yaml
+exec wisp 'hi'
+stderr 'ignoring .*\.wisp: not trusted yet'
+! stderr 'MCP: budget'
+! grep 'tool_search' requests.jsonl
+
+exec wisp --trust-project 'hi'
+stderr 'MCP: budget \(2 tools\)'
+grep 'tool_search' requests.jsonl
+
+exec wisp 'hi'
+! stderr 'not trusted'
+stderr 'MCP: budget'
+
+cp changed.json .wisp/mcp.json
+exec wisp 'hi'
+stderr 'not trusted yet'
+
+-- .wisp/.keep --
+-- mcp.json --
+{"mcpServers": {"budget": {"command": "fake-mcp"}}}
+-- changed.json --
+{"mcpServers": {"budget": {"command": "fake-mcp", "args": ["--other"]}}}
+-- model.yaml --
+rules:
+  - repeat: true
+    reply: {text: hello}

@@ -26,14 +26,18 @@ Rules:
 - Add "BREAKING CHANGE: <what>" as the last paragraph only when behavior users rely on changes.
 Reply with the commit message only: no code fences, no preamble.'
 
-# The stat line keeps the whole change in view when the diff is cut.
+# The stat line keeps the whole change in view when the diff is cut. When
+# head cuts it, git dies of SIGPIPE (exit 141), which pipefail would turn
+# into the script's failure: that exit is expected, so it is ignored.
+# --no-show-signature: with log.showSignature set, the log would carry GPG
+# output naming the author, which the model turns into a Signed-off-by.
 changes="Recent commits, for the scope names in use:
-$(git log --oneline -10 2>/dev/null || true)
+$(git log --no-show-signature --oneline -10 2>/dev/null || true)
 
 Staged changes:
 $(git diff --cached --stat)
 
-$(git diff --cached --unified=2 | head -c 60000)"
+$({ git diff --cached --unified=2 || [ $? -eq 141 ]; } | head -c 60000)"
 
 # Thinking off (as wisp does for a summary): a reasoning model would
 # otherwise spend the token budget, and minutes, before the first word.

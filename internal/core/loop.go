@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/tool"
@@ -45,8 +46,8 @@ type MessageStore interface {
 }
 
 // Loop runs turns against a Provider. Optional callbacks let a frontend
-// render streamed events and tool results as they happen. A Loop runs one
-// turn at a time; it is not safe for concurrent use.
+// render streamed events, tool results, and per-step stats as they happen.
+// A Loop runs one turn at a time; it is not safe for concurrent use.
 type Loop struct {
 	Provider model.Provider
 	Tools    *tool.Registry // nil means no tools
@@ -56,8 +57,9 @@ type Loop struct {
 	Store     MessageStore // nil means in-memory only
 	SessionID string
 
-	MaxIterations int  // provider round-trips per Run; <= 0 uses the default
-	NoTools       bool // the model can't call tools: send none
+	MaxIterations int           // provider round-trips per Run; <= 0 uses the default
+	NoTools       bool          // the model can't call tools: send none
+	Price         model.Pricing // the model's list price, for requests the endpoint doesn't bill
 
 	// FinishCheck, if set, runs when the model gives a final answer, with
 	// this turn's messages. A non-empty result is sent back as a reminder
@@ -66,8 +68,10 @@ type Loop struct {
 
 	OnEvent      func(model.Event)                        // every streamed event, as it arrives
 	OnToolResult func(model.ToolCall, tool.Result, error) // each call as it finishes, skipped ones included
+	OnStats      func(StepStats)                          // after each request, when its stream ends
 
-	ran map[string]bool // read-only calls run this turn since the last risky one (callKey)
+	stats StepStats       // session-cumulative totals
+	ran   map[string]bool // read-only calls run this turn since the last risky one (callKey)
 }
 
 // Run appends userInput as a user turn and drives the provider/tool loop
@@ -245,13 +249,15 @@ func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model
 		req.ToolChoice = toolChoice
 	}
 
+	start := time.Now()
 	events, err := l.Provider.Stream(ctx, req)
 	if err != nil {
 		return "", nil, false, fmt.Errorf("starting stream: %w", err)
 	}
 
-	var text strings.Builder
+	var text, reasoning, toolCallText strings.Builder
 	var toolCalls []model.ToolCall
+	var usage *model.Usage
 	for e := range events {
 		if l.OnEvent != nil {
 			l.OnEvent(e)
@@ -259,15 +265,20 @@ func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model
 		switch e.Kind {
 		case model.EventTextDelta:
 			text.WriteString(e.Text)
+		case model.EventReasoningDelta:
+			reasoning.WriteString(e.Reasoning)
 		case model.EventReclassify:
-			// The text so far was reasoning; reasoning isn't kept.
+			// The text so far was reasoning, not the answer.
+			reasoning.WriteString(text.String())
 			text.Reset()
 		case model.EventToolCall:
 			if e.ToolCall != nil {
 				toolCalls = append(toolCalls, *e.ToolCall)
+				toolCallText.WriteString(e.ToolCall.Name)
+				toolCallText.Write(e.ToolCall.Args)
 			}
 		case model.EventDone:
-			truncated = e.Truncated
+			usage, truncated = e.Usage, e.Truncated
 		case model.EventError:
 			return "", nil, false, fmt.Errorf("stream error: %w", e.Err)
 		}
@@ -276,6 +287,14 @@ func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model
 	if err := ctx.Err(); err != nil {
 		return "", nil, false, err
 	}
+
+	l.recordStats(response{
+		reasoning: reasoning.String(),
+		answer:    text.String(),
+		toolCalls: toolCallText.String(),
+		usage:     usage,
+		duration:  time.Since(start),
+	})
 	return text.String(), toolCalls, truncated, nil
 }
 

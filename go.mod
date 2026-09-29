@@ -6,6 +6,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/tiktoken-go/tokenizer v0.8.1
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20260921070245-7a4a4d6beae2
+	golang.org/x/net v0.59.0
 )
 
 require (

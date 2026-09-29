@@ -14,3 +14,5 @@ github.com/tiktoken-go/tokenizer v0.8.1 h1:4obDoB6/dhdBt9xMweX4nww5cjdOq/nYF4ecw
 github.com/tiktoken-go/tokenizer v0.8.1/go.mod h1:eLA0t6nGvn9mDc7gt90qt7pMat+gE9ViqwQ6l9B+tA4=
 golang.org/x/crypto/x509roots/fallback v0.0.0-20260921070245-7a4a4d6beae2 h1:eZbx26MSkMP0nFHSVwZplOsFCdjlfBz822hYXljWbUo=
 golang.org/x/crypto/x509roots/fallback v0.0.0-20260921070245-7a4a4d6beae2/go.mod h1:HPze8vhfG6fO06AM+VSvxRm4E3+5Yk375mgrJ5M2z1E=
+golang.org/x/net v0.59.0 h1:5zfYln+w5XCxwrnMMJPufRgNoXEaGxl0wo5GqPXyues=
+golang.org/x/net v0.59.0/go.mod h1:2DA/G1UfVbCpQPeWTmMPGY7Cs2PkBkwu743bVX5PIVg=

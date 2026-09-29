@@ -11,12 +11,9 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync/atomic"
 	"syscall"
 
 	"github.com/antoniosarro/wisp/internal/model"
-	"github.com/antoniosarro/wisp/internal/permission"
-	"github.com/antoniosarro/wisp/internal/termsafe"
 	"github.com/antoniosarro/wisp/internal/version"
 )
 
@@ -108,20 +105,5 @@ func run() error {
 	if info.Tools == model.Unsupported {
 		fmt.Fprintf(os.Stderr, "wisp: the endpoint says %s cannot call tools; running it without tools\n", info.ID)
 	}
-
-	prompter := permission.Prompter(permission.TerminalPrompter{})
-	if cfg.SkipPermissions {
-		prompter = permission.AllowAll{}
-	}
-	loop, err := newLoop(cfg, provider, info, new(atomic.Bool), prompter)
-	if err != nil {
-		return err
-	}
-	answer, err := loop.Run(ctx, prompt)
-	if err != nil {
-		return err
-	}
-	// Model output reaches the terminal only through termsafe.
-	fmt.Println(termsafe.Strip(answer))
-	return nil
+	return runSingleShot(ctx, cfg, provider, info, prompt)
 }

@@ -29,6 +29,7 @@
             golangci-lint
             gotools
             just
+            jq
           ];
         };
       }

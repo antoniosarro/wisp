@@ -106,7 +106,8 @@ Detected from the base URL's host.
 - **Cost.** Each request asks for its billed cost, reported in
   `Usage.Cost` with the upstream provider that served it.
 - **Attribution.** With `AppURL` set, requests carry wisp's app attribution
-  headers. These go to OpenRouter only.
+  headers. These go to OpenRouter only. [config.md](config.md#openrouter)
+  covers the flags.
 
 ## Model discovery
 

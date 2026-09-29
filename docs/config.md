@@ -1,0 +1,154 @@
+# Configuration
+
+wisp has no config file: it is configured with flags and environment
+variables, plus a few files for MCP servers, sub-agents, and project
+instructions. `wisp -h` lists every flag. Put flags before the prompt.
+
+## Endpoint and model
+
+wisp talks to one OpenAI-compatible endpoint: `--base-url`, else
+`$WISP_BASE_URL`, else `http://localhost:8000/v1`. It must stream chat
+completions and support tool calling. wisp doesn't start a model server.
+
+The model is picked in this order:
+
+```mermaid
+flowchart LR
+    A["--model / $WISP_MODEL"] -->|unset| B["the resumed session's model"]
+    B -->|none| C["the last model used<br/>with this endpoint"]
+    C -->|none| D["the endpoint's only loaded<br/>or only chat model"]
+    D -->|several| E["TUI: a picker<br/>one-shot: list them and exit"]
+```
+
+`/model` switches inside the TUI, and `--models` lists what the endpoint
+offers with what it reports about each model.
+
+### What wisp learns about a model
+
+wisp asks the endpoint for the model's context window and capabilities,
+from the `/models` listing and from local servers' native endpoints
+([model-provider.md](model-provider.md#model-discovery)):
+
+| Server | Context window | Tools | Vision | Reasoning |
+| --- | --- | --- | --- | --- |
+| vLLM, SGLang | `max_model_len` | — | — | — |
+| llama.cpp | `/props` per-slot `n_ctx` | `/props` template caps | `/props` modalities | — |
+| llama-swap | `meta.llamaswap.context_length` | — | — | — |
+| Ollama | `/api/ps` loaded context, else the model's `num_ctx` | `/api/show` | `/api/show` | `/api/show` |
+| LM Studio | `/api/v0/models` loaded context | `tool_use` | model type `vlm` | — |
+| OpenRouter | `context_length` | `supported_parameters` | input modalities | `supported_parameters` |
+
+- **The window** drives the context budget ([compaction.md](compaction.md))
+  and the TUI's usage bar. Ollama and LM Studio report it only once a model
+  is loaded, so the TUI asks again after the first turn.
+- **A model that can't call tools** runs without tools.
+- **Vision** lets `read` send images (PNG, JPEG, GIF, WebP up to 10 MB).
+- **Overrides:** `--context-window N` and `--vision` replace what the
+  endpoint reports.
+
+## Flags
+
+| Flag | Default | What it does |
+| --- | --- | --- |
+| `--base-url URL` | `$WISP_BASE_URL`, else `http://localhost:8000/v1` | The endpoint |
+| `--api-key KEY` | `$WISP_API_KEY` | Sent as a bearer token; `--api-key ""` sends none |
+| `--model NAME` | `$WISP_MODEL`, else [picked](#endpoint-and-model) | The model |
+| `--models` | | List the endpoint's models and exit |
+| `--context-window N` | what the endpoint reports | Override the context window |
+| `--vision` | what the endpoint reports | Send image files to the model |
+| `--price IN,OUT[,CACHED_IN]` | `$WISP_PRICE`, else the endpoint's | Model price per million tokens, for [cost](#cost) |
+| `--provider NAME` | `$WISP_PROVIDER` | OpenRouter: pin every request to one provider |
+| `--cheapest` | | OpenRouter: route to the two cheapest zero-retention providers |
+| `--resume ID` | | Continue a session ([session.md](session.md)) |
+| `--sessions` | | List this directory's recent sessions and exit |
+| `--suggest` | | Suggest a next message after each reply (one extra request) |
+| `--max-iterations N` | 100 | Model round trips per turn before wrapping up |
+| `--max-agents N` | 1 | Sub-agents running at once ([subagents.md](subagents.md)) |
+| `--no-summarize` | | Only mask old tool output; never summarize ([compaction.md](compaction.md)) |
+| `--trust-project` | | Use this project's `.wisp/` config without asking ([permissions.md](permissions.md#project-trust)) |
+| `--dangerously-skip-permissions` | | Skip approvals, except destructive MCP tools ([permissions.md](permissions.md#skipping-approvals)) |
+| `--trace` | | Serve live session timelines while you work ([tracing.md](tracing.md)) |
+| `--trace-only` | | Serve the timelines only; needs no model |
+| `--trace-addr ADDR` | `127.0.0.1:7777` | Address for the trace page; a free port if taken |
+| `--version` | | Print the version and exit |
+
+## Environment variables
+
+| Variable | Meaning |
+| --- | --- |
+| `WISP_BASE_URL`, `WISP_API_KEY`, `WISP_MODEL` | Defaults for `--base-url`, `--api-key`, `--model` |
+| `WISP_PROVIDER`, `WISP_PRICE` | Defaults for `--provider`, `--price` |
+| `WISP_THEME=light` | Light palette; the default is dark |
+| `WISP_LOGO=text` | Text logo on the splash, even on kitty and Ghostty |
+
+`WISP_API_KEY` is removed from the environment of the commands and MCP
+servers wisp starts. The key is never a flag default either, so `wisp -h`
+can't print it.
+
+## Files
+
+| Path | What it holds |
+| --- | --- |
+| `AGENTS.md` | Project instructions, added to the system prompt (first 32 KB) |
+| `~/.config/wisp/mcp.json`, `.wisp/mcp.json` | MCP servers, global and project ([mcp.md](mcp.md)) |
+| `~/.config/wisp/agents/*.md`, `.wisp/agents/*.md` | Sub-agents, global and project ([subagents.md](subagents.md)) |
+| `~/.local/share/wisp/session.db` | Every project's sessions and traces ([session.md](session.md)) |
+| `~/.local/state/wisp/state.json` | The last model per endpoint, trusted projects, the update check |
+| `~/.cache/wisp/masked/` | Masked command output, kept 7 days ([compaction.md](compaction.md#stand-ins)) |
+
+- **Project config needs trust.** A project's `.wisp/mcp.json` and its
+  agents' endpoints are used only once the project is trusted: wisp asks
+  once in the terminal, and again when those files change
+  ([permissions.md](permissions.md#project-trust)).
+- **XDG.** `~/.config`, `~/.local/share`, `~/.local/state`, and `~/.cache`
+  follow `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$XDG_STATE_HOME`, and
+  `$XDG_CACHE_HOME`.
+- **Private.** The directories wisp creates are mode 700, and the files
+  holding transcripts or output mode 600.
+
+## Cost
+
+`/debug`, the trace page, and one-shot runs' usage summary show what
+requests cost:
+
+- **OpenRouter:** the amount billed, at the rates of whichever provider
+  served the request, cache discounts included.
+- **Other hosted endpoints:** an estimate at the model's list price, with
+  cached prompt tokens at the cached rate. When the endpoint doesn't report
+  prices, pass `--price IN,OUT[,CACHED_IN]` in US dollars per million
+  tokens, e.g. `--price 0.27,1.10,0.07`.
+- **Local endpoints** (loopback, private ranges, Tailscale, `.local`/`.lan`
+  names) have no API cost.
+
+Sub-agents without a billed cost are priced at their model's rate;
+`--suggest` requests aren't counted.
+
+## OpenRouter
+
+- **Privacy.** Requests go only to providers with zero data retention that
+  don't train on prompts.
+- **Routing.** OpenRouter's price sort picks the cheapest of those, and
+  since it stays the same from request to request, a conversation keeps
+  hitting the same prompt cache. `--cheapest` looks the two cheapest up
+  itself and routes only to them, in case account preferences override the
+  price sort. `--provider NAME` (e.g. `deepinfra`) pins every request to
+  one provider; requests then fail rather than fall back when it's down.
+  Sub-agents with their own model aren't pinned.
+- **Attribution.** Requests name the app as `Wisp@<version>`, so they
+  appear under wisp in OpenRouter's activity and app rankings.
+
+## Appearance
+
+The palette is dark; `WISP_THEME=light` switches to a light one. On kitty
+and Ghostty the splash shows the image logo and the mascot is an animated
+image recolored to the terminal's own colors; elsewhere both fall back to
+text. The mascot in the corner shows what the agent is doing: thinking,
+writing, running a tool or a sub-agent, waiting for your approval, or
+asleep after a quiet minute. Some words in a message make it react (try
+"thanks", "party", or "coffee").
+
+## Update check
+
+Release builds ask GitHub for the newest release at most once a day, in
+the background, and show "Update available" on the splash when there is a
+newer one. Development builds and Nix builds don't check.

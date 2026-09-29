@@ -3,13 +3,16 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/rogpeppe/go-internal/testscript"
 
+	"github.com/antoniosarro/wisp/internal/session"
 	"github.com/antoniosarro/wisp/internal/testutil/fakemodel"
 )
 
@@ -39,6 +42,7 @@ func TestScripts(t *testing.T) {
 		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 			"fakemodel": cmdFakeModel,
 			"requests":  cmdRequests,
+			"session":   cmdSession,
 		},
 	})
 }
@@ -91,5 +95,40 @@ func cmdRequests(ts *testscript.TestScript, neg bool, args []string) {
 		}
 	default:
 		ts.Fatalf("usage: requests count N | requests valid")
+	}
+}
+
+// cmdSession reads the newest session in the scenario's session database:
+//
+//	session id        sets $SESSION to its id
+//	session history   prints its messages, one "role: content" line each
+func cmdSession(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 1 {
+		ts.Fatalf("usage: session id | session history")
+	}
+	store, err := session.Open(ts.MkAbs(".data/wisp/session.db"))
+	ts.Check(err)
+	defer func() { _ = store.Close() }()
+	sessions, err := store.ListSessions()
+	ts.Check(err)
+	if len(sessions) == 0 {
+		ts.Fatalf("no sessions")
+	}
+	id := sessions[0].ID
+	switch args[0] {
+	case "id":
+		ts.Setenv("SESSION", id)
+	case "history":
+		history, err := store.LoadHistory(id)
+		ts.Check(err)
+		for _, m := range history {
+			line := strings.ReplaceAll(m.Content, "\n", `\n`)
+			for _, c := range m.ToolCalls {
+				line += fmt.Sprintf(" [call %s %s]", c.Name, c.Args)
+			}
+			_, _ = fmt.Fprintf(ts.Stdout(), "%s: %s\n", m.Role, line)
+		}
+	default:
+		ts.Fatalf("usage: session id | session history")
 	}
 }

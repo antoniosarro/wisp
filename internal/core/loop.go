@@ -89,6 +89,18 @@ type Loop struct {
 	pre    *presummary     // a summary generated in the background, if any
 }
 
+// WithSession returns a loop with l's configuration that runs session id
+// of store, from history. Nothing of l's session carries over: stats,
+// compactions, caches, and a background summary start empty. The caller
+// calls LoadCompaction next, as for a new loop.
+func (l *Loop) WithSession(store MessageStore, id string, history []model.Message) *Loop {
+	next := *l
+	next.Store, next.SessionID, next.History = store, id, history
+	next.Compacted, next.Compactions = nil, nil
+	next.stats, next.ran, next.tokens, next.pre = StepStats{}, nil, tokenCache{}, nil
+	return &next
+}
+
 // Run appends userInput as a user turn and drives the provider/tool loop
 // until a plain-text answer comes back. Past MaxIterations, it asks for a
 // summary of the work so far instead of dropping it (wrapUp).

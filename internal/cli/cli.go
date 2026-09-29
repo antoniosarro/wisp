@@ -37,7 +37,7 @@ func Main() int {
 // form, or the informational flags (--version, --models).
 func run() error {
 	var cfg Config
-	flag.StringVar(&cfg.ModelName, "model", os.Getenv("WISP_MODEL"), "model to use (default: $WISP_MODEL, else the endpoint's only model)")
+	flag.StringVar(&cfg.ModelName, "model", os.Getenv("WISP_MODEL"), "model to use (default: $WISP_MODEL, else the resumed session's model, the last one used with this endpoint, or the endpoint's only model)")
 	flag.StringVar(&cfg.BaseURL, "base-url", cmp.Or(os.Getenv("WISP_BASE_URL"), "http://localhost:8000/v1"), "OpenAI-compatible API base URL (default: $WISP_BASE_URL)")
 	// Not a flag default, which -h would print: the key would end up in
 	// pasted help output. An explicit --api-key "" still sends no key.
@@ -46,6 +46,7 @@ func run() error {
 		cfg.APIKey, apiKeySet = v, true
 		return nil
 	})
+	flag.StringVar(&cfg.ResumeID, "resume", "", "resume a previous session by id (see --sessions)")
 	flag.StringVar(&cfg.Provider, "provider", os.Getenv("WISP_PROVIDER"), "OpenRouter only: send every request to this upstream provider, e.g. deepinfra (default: $WISP_PROVIDER, else the cheapest zero-data-retention one)")
 	flag.BoolVar(&cfg.Cheapest, "cheapest", false, "OpenRouter only: look up the model's two cheapest zero-data-retention providers and route only to them, cheapest first, in case account preferences override the price sort")
 	flag.BoolVar(&cfg.SkipPermissions, "dangerously-skip-permissions", false, "skip permission prompts (dangerous)")
@@ -58,6 +59,7 @@ func run() error {
 		return err
 	})
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	listSessions := flag.Bool("sessions", false, "list recent sessions in this working directory and exit")
 	listModels := flag.Bool("models", false, "list the endpoint's models and what it reports about them, then exit")
 	flag.Usage = func() {
 		_, _ = fmt.Fprint(flag.CommandLine.Output(), "usage: wisp [flags] prompt...\n\n")
@@ -78,6 +80,9 @@ func run() error {
 	if *showVersion {
 		fmt.Println("wisp", version.Version)
 		return nil
+	}
+	if *listSessions {
+		return printSessions()
 	}
 
 	// SIGHUP and SIGTERM too: cancelling lets a running turn record its
@@ -104,6 +109,7 @@ func run() error {
 
 	provider.SetModel(cfg.ModelName)
 	info := cfg.override(describeModel(ctx, provider, cfg.ModelName))
+	rememberModel(cfg.BaseURL, info.ID)
 	if info.Tools == model.Unsupported {
 		fmt.Fprintf(os.Stderr, "wisp: the endpoint says %s cannot call tools; running it without tools\n", info.ID)
 	}

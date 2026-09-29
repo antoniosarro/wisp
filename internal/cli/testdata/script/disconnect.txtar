@@ -1,0 +1,19 @@
+# A stream that ends before completion fails the turn with a clear
+# error. Resuming repairs the history (the unanswered prompt gets a
+# placeholder answer) before sending it.
+
+fakemodel model.yaml
+! exec wisp 'first'
+stderr 'stream ended before completion'
+session id
+exec wisp --resume $SESSION 'second'
+stdout 'recovered'
+grep 'no reply: the turn was interrupted' requests.jsonl
+requests valid
+
+-- model.yaml --
+rules:
+  - when: {contains: first}
+    reply: {text: partial, disconnect: true}
+  - when: {contains: second}
+    reply: {text: recovered}

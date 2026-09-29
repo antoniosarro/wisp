@@ -28,10 +28,11 @@ func runSingleShot(ctx context.Context, cfg Config, provider *openaicompat.Clien
 	if cfg.SkipPermissions {
 		prompter = permission.AllowAll{}
 	}
-	loop, err := newLoop(cfg, provider, info, new(atomic.Bool), prompter)
+	loop, cleanup, err := newLoop(cfg, provider, info, new(atomic.Bool), prompter)
 	if err != nil {
 		return err
 	}
+	defer cleanup()
 
 	loop.Presummarize = false // the process exits after one turn: nothing would use it
 	loop.OnEvent, loop.OnToolResult = newRenderer(os.Stdout)

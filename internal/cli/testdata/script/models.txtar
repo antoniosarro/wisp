@@ -1,5 +1,5 @@
-# Model discovery: an ambiguous endpoint lists its models, --models
-# describes them, --model picks one, and --price adds a cost estimate.
+# Model discovery: an ambiguous endpoint lists its models, --model picks
+# one, and later runs remember it. --price adds a cost estimate.
 
 fakemodel model.yaml
 ! exec wisp 'hi'
@@ -13,9 +13,15 @@ stdout 'small  \(8K context\)'
 exec wisp --model big 'hi'
 stdout 'hello from big'
 grep '"model":"big"' requests.jsonl
+grep 'big' .state/wisp/state.json
+
+rm requests.jsonl
+exec wisp 'hi again'
+grep '"model":"big"' requests.jsonl
+! grep '"model":"small"' requests.jsonl
 stderr 'est\. cost \$'
 
-exec wisp --model big --price 3,15 'priced'
+exec wisp --price 3,15 'priced'
 stderr 'est\. cost \$0\.0'
 
 -- model.yaml --

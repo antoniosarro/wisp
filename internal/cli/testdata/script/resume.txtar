@@ -1,0 +1,23 @@
+# A session resumed with --resume continues its history and its model.
+
+fakemodel model.yaml
+exec wisp --model b 'first question'
+stdout 'first answer'
+session id
+
+rm requests.jsonl
+exec wisp --resume $SESSION 'second question'
+stdout 'second answer'
+grep 'first question' requests.jsonl
+grep 'first answer' requests.jsonl
+grep '"model":"b"' requests.jsonl
+requests count 1
+requests valid
+
+-- model.yaml --
+models: [{id: a}, {id: b}]
+rules:
+  - when: {contains: first question}
+    reply: {text: first answer}
+  - when: {contains: second question}
+    reply: {text: second answer}

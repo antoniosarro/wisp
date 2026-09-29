@@ -12,14 +12,16 @@ import (
 
 	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
+	"github.com/antoniosarro/wisp/internal/termsafe"
 )
 
 // discoveryTimeout bounds the model listing and description at startup.
 const discoveryTimeout = 5 * time.Second
 
-// resolveModel sets cfg.ModelName when it wasn't given, to the endpoint's
-// only loaded or only chat model. It returns the listing, so the caller
-// can name the choices when several models remain.
+// resolveModel sets cfg.ModelName when it wasn't given: to the resumed
+// session's model, else the last one used with this endpoint, else the
+// endpoint's only loaded or only chat model. It returns the listing, so
+// the caller can name the choices when several models remain.
 func resolveModel(ctx context.Context, cfg *Config, catalog model.Catalog) ([]model.Info, error) {
 	if cfg.ModelName != "" {
 		return nil, nil
@@ -30,7 +32,7 @@ func resolveModel(ctx context.Context, cfg *Config, catalog model.Catalog) ([]mo
 	if err != nil {
 		return nil, fmt.Errorf("no --model given, and listing the endpoint's models failed: %w", err)
 	}
-	cfg.ModelName = chooseModel(models)
+	cfg.ModelName = chooseModel(models, resumedModel(cfg.ResumeID), loadState().LastModel[cfg.BaseURL])
 	return models, nil
 }
 
@@ -67,7 +69,7 @@ func ambiguousModel(models []model.Info) error {
 	var b strings.Builder
 	b.WriteString("the endpoint serves several models; choose one with --model or $WISP_MODEL:")
 	for _, m := range models {
-		fmt.Fprintf(&b, "\n  %s  (%s)", m.ID, m.Summary())
+		fmt.Fprintf(&b, "\n  %s  (%s)", termsafe.Strip(m.ID), m.Summary())
 	}
 	return fmt.Errorf("%s", b.String())
 }
@@ -140,7 +142,8 @@ func printModels(ctx context.Context, catalog model.Catalog, current string) err
 		if m.ID == current {
 			marker = "*"
 		}
-		fmt.Printf("%s %s  (%s)\n", marker, m.ID, m.Summary())
+		// Model ids come from the endpoint: they may not drive the terminal.
+		fmt.Printf("%s %s  (%s)\n", marker, termsafe.Strip(m.ID), m.Summary())
 	}
 	return nil
 }

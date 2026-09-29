@@ -7,8 +7,10 @@ stdout 'Fixed: the check passes\.'
 cmp greet.txt want.txt
 requests count 4
 requests valid
-grep '"role":"tool","content":"FAIL' requests.jsonl
-grep 'replaced 1 occurrence\(s\) in greet.txt' requests.jsonl
+session history
+stdout '^tool: FAIL'
+stdout '^tool: replaced 1 occurrence\(s\) in greet.txt'
+stdout '^assistant: Fixed: the check passes\.$'
 
 -- model.yaml --
 models: [{id: fake, max_model_len: 32768}]

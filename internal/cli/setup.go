@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"sync/atomic"
 	"time"
@@ -15,13 +16,11 @@ import (
 	"github.com/antoniosarro/wisp/internal/version"
 )
 
-// repoURL names wisp to OpenRouter (app attribution).
-const repoURL = "https://github.com/antoniosarro/wisp"
-
 // Config holds what the flags set.
 type Config struct {
 	ModelName       string
 	BaseURL         string
+	ResumeID        string // from --resume
 	APIKey          string
 	Provider        string // OpenRouter upstream provider to pin, from --provider
 	Cheapest        bool   // OpenRouter: route to the model's two cheapest providers, from --cheapest
@@ -41,10 +40,12 @@ func newProvider(cfg Config) *openaicompat.Client {
 	}, nil)
 }
 
-// newLoop wires the provider and the permission-gated built-in tools into
-// a Loop configured for info, the provider's current model. vision is the
-// read tool's image switch, which applyModel sets from info.
-func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision *atomic.Bool, prompter permission.Prompter) (*core.Loop, error) {
+// newLoop wires the provider, the permission-gated built-in tools, and the
+// session store into a Loop configured for info, the provider's current
+// model: a new session, or the one cfg resumes, from its latest summary.
+// vision is the read tool's image switch, which applyModel sets from info.
+// The caller must call cleanup, which closes the store.
+func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision *atomic.Bool, prompter permission.Prompter) (loop *core.Loop, cleanup func(), err error) {
 	tools := permission.GateAll(prompter,
 		builtin.ReadTool{Vision: vision},
 		builtin.LsTool{},
@@ -59,16 +60,32 @@ func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision 
 	)
 	workDir, err := os.Getwd()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	loop := &core.Loop{
+	store, history, sessionID, err := openSession(cfg.ResumeID, info.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if cfg.ResumeID != "" && info.ID != "" {
+		_ = store.SetSessionModel(sessionID, info.ID) // the next resume picks it again
+	}
+	fmt.Fprintf(os.Stderr, "wisp: session %s\n", sessionID)
+
+	loop = &core.Loop{
 		Provider:      provider,
 		Tools:         tool.NewRegistry(tools...),
 		System:        prompt.Build(workDir, time.Now()),
 		FinishCheck:   builtin.TodoReminder,
+		Store:         store,
+		SessionID:     sessionID,
+		History:       history,
 		MaxIterations: cfg.MaxIterations,
 		AutoCompact:   !cfg.NoSummarize,
 	}
+	// The window must be set first: summaries are rendered for it.
 	applyModel(loop, vision, info)
-	return loop, nil
+	if err := loop.LoadCompaction(); err != nil {
+		fmt.Fprintf(os.Stderr, "wisp: %v; resuming without the summary\n", err)
+	}
+	return loop, func() { loop.StopPresummary(); _ = store.Close() }, nil
 }

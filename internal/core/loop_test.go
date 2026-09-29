@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -390,42 +389,6 @@ func TestRepeatedReadOnlyCallsDontRunAgain(t *testing.T) {
 	}
 	if reads != 4 {
 		t.Errorf("read ran %d times after a new turn, want 4", reads)
-	}
-}
-
-// memStore records what the loop persists.
-type memStore struct {
-	ids  []string
-	msgs []model.Message
-	fail error
-}
-
-func (s *memStore) AppendMessage(id string, msg model.Message) error {
-	if s.fail != nil {
-		return s.fail
-	}
-	s.ids, s.msgs = append(s.ids, id), append(s.msgs, msg)
-	return nil
-}
-
-func TestLoopPersistsEveryMessage(t *testing.T) {
-	p := &testutil.ScriptedProvider{Turns: [][]model.Event{
-		{{Kind: model.EventToolCall, ToolCall: &model.ToolCall{ID: "c", Name: "echo", Args: json.RawMessage(`{}`)}}, {Kind: model.EventDone}},
-		{{Kind: model.EventTextDelta, Text: "done"}, {Kind: model.EventDone}},
-	}}
-	store := &memStore{}
-	l := &Loop{Provider: p, Tools: tool.NewRegistry(testutil.EchoTool{}), System: "be brief", Store: store, SessionID: "s1"}
-	if _, err := l.Run(context.Background(), "go"); err != nil {
-		t.Fatal(err)
-	}
-	// user, assistant with the call, its result, the answer; never the system prompt
-	if len(store.msgs) != 4 || !reflect.DeepEqual(store.msgs, l.History) || store.ids[0] != "s1" {
-		t.Errorf("persisted %+v under %v, want History under s1", store.msgs, store.ids)
-	}
-
-	store.fail = errors.New("disk full")
-	if _, err := l.Run(context.Background(), "again"); err == nil || !strings.Contains(err.Error(), "disk full") {
-		t.Errorf("Run with a failing store = %v, want the store's error", err)
 	}
 }
 

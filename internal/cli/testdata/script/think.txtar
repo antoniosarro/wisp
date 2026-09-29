@@ -1,0 +1,22 @@
+# A template that opens <think> in the prompt streams only the closing
+# tag: the text before it is reasoning, and only the answer is saved.
+# Reasoning sent as reasoning_content is never saved either.
+
+fakemodel model.yaml
+exec wisp 'first'
+stdout 'the answer'
+session id
+exec wisp --resume $SESSION 'second'
+session history
+stdout '^assistant: the answer$'
+stdout '^assistant: second answer$'
+! stdout 'secret plan'
+! stdout 'hidden reasoning'
+requests valid
+
+-- model.yaml --
+rules:
+  - when: {contains: first}
+    reply: {text: "secret plan</think>\n\nthe answer", chunk: 3}
+  - when: {contains: second}
+    reply: {reasoning: hidden reasoning, text: second answer}

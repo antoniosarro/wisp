@@ -10,26 +10,6 @@ import (
 	"testing"
 )
 
-func TestSensitivePath(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	for path, want := range map[string]bool{
-		filepath.Join(home, ".ssh", "config"):         true,
-		filepath.Join(home, ".config", "gh", "h.yml"): true,
-		"deploy/server.pem":                           true,
-		"id_ed25519":                                  true,
-		".env":                                        true,
-		".env.production":                             true,
-		".env.example":                                false,
-		"internal/tokencount/count.go":                false,
-		filepath.Join(home, ".sshrc"):                 false,
-	} {
-		if got := sensitivePath(path); got != want {
-			t.Errorf("sensitivePath(%s) = %v, want %v", path, got, want)
-		}
-	}
-}
-
 func TestGrepFromHomeSkipsCredentials(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

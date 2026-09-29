@@ -43,11 +43,25 @@ disk. What it covers is decided by `permission.RuleKey`:
 
 - **`bash`:**
   - **Only the exact command** when the command has `;`, `&`, `|`,
-    redirects, `$`, backticks, or parentheses, starts with `VAR=`, or names
-    its program by path (`./git`, `/usr/bin/git`).
-  - **The whole program** for read-only programs (`ls`, `cat`, `head`,
-    `tail`, `wc`, `grep`, `pwd`, `echo`, `diff`, `jq`, `ps`, ...): `ls -la`
-    covers every `ls` command.
+    redirects, `$`, backticks, parentheses, or a control character (a
+    tab aside), starts with `VAR=`, or names its program by path (`./git`,
+    `/usr/bin/git`).
+  - **The whole program** for programs that only list or report (`ls`,
+    `wc`, `pwd`, `echo`, `stat`, `du`, `ps`, ...): `ls -la` covers every
+    `ls` command.
+  - **The whole program, minus credentials,** for programs that print what
+    files contain (`cat`, `head`, `tail`, `grep`, `diff`, `cmp`, `cut`,
+    `jq`). `cat notes.txt` covers `cat` commands, but a command that could
+    print a credential covers only itself, and one run later asks again.
+    That is a command with an argument that:
+    - names a credential path (`~` expanded, `--opt=value` values
+      included),
+    - is a glob,
+    - or is a directory;
+
+    or, for `grep`, one that searches recursively. So "always allow" on
+    `cat notes.txt` can't let `cat ~/.ssh/id_rsa` through, where `read`
+    would ask.
   - **One subcommand** for programs that dispatch on one (`git`, `go`,
     `cargo`, `npm`, `pnpm`, `yarn`, `docker`, `podman`, `kubectl`, `gh`,
     `just`, `make`, `systemctl`, `uv`, `pip`, ...): `git status` covers
@@ -91,7 +105,10 @@ credentials:
   skip credential directories, and `grep` skips credential files it meets,
   saying how many. A search of the project can't return a `.env`.
 
-The lists are in `internal/tool/builtin/sensitive.go`.
+The lists are in `internal/credential`, shared by the tools and the rules
+above. Symlinks are resolved through the longest existing part of a path,
+so a link to a key yet to be created, or a home directory behind a symlink,
+still counts.
 
 ## Skipping approvals
 

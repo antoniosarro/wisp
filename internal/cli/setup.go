@@ -11,6 +11,7 @@ import (
 	"github.com/antoniosarro/wisp/internal/model/openaicompat"
 	"github.com/antoniosarro/wisp/internal/permission"
 	"github.com/antoniosarro/wisp/internal/prompt"
+	"github.com/antoniosarro/wisp/internal/span"
 	"github.com/antoniosarro/wisp/internal/tool"
 	"github.com/antoniosarro/wisp/internal/tool/builtin"
 	"github.com/antoniosarro/wisp/internal/version"
@@ -82,10 +83,12 @@ func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision 
 		MaxIterations: cfg.MaxIterations,
 		AutoCompact:   !cfg.NoSummarize,
 	}
+	loop.Spans = span.NewRecorder(store, sessionID)
 	// The window must be set first: summaries are rendered for it.
 	applyModel(loop, vision, info)
 	if err := loop.LoadCompaction(); err != nil {
 		fmt.Fprintf(os.Stderr, "wisp: %v; resuming without the summary\n", err)
 	}
-	return loop, func() { loop.StopPresummary(); _ = store.Close() }, nil
+	// The recorder writes what's queued before the store closes.
+	return loop, func() { loop.StopPresummary(); loop.Spans.Close(); _ = store.Close() }, nil
 }

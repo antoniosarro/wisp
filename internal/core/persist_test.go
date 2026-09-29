@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/antoniosarro/wisp/internal/model"
+	"github.com/antoniosarro/wisp/internal/span"
 	"github.com/antoniosarro/wisp/internal/testutil"
 	"github.com/antoniosarro/wisp/internal/tool"
 )
@@ -93,11 +94,13 @@ func TestWithSession(t *testing.T) {
 		Compacted: &Compaction{FirstKept: 3}, Compactions: []Compaction{{FirstKept: 3}}}
 	l.stats.RequestCount = 7
 
-	next := l.WithSession(store, "new", history)
+	rec := span.NewRecorder(&spanSink{spans: map[string]span.Record{}}, "new")
+	defer rec.Close()
+	next := l.WithSession(store, "new", history, rec)
 	if next.System != "sys" || next.ContextWindow != 8192 || !next.AutoCompact {
 		t.Errorf("configuration lost: %+v", next)
 	}
-	if next.Store != store || next.SessionID != "new" || !reflect.DeepEqual(next.History, history) {
+	if next.Store != store || next.SessionID != "new" || !reflect.DeepEqual(next.History, history) || next.Spans != rec {
 		t.Errorf("session not switched: store %v, id %q", next.Store, next.SessionID)
 	}
 	if next.Compacted != nil || next.Compactions != nil || next.stats.RequestCount != 0 {

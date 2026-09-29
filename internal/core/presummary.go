@@ -60,10 +60,10 @@ func (l *Loop) presummarize() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	pre := &presummary{base: l.Compacted, cut: cut, cancel: cancel, done: make(chan struct{})}
-	provider := l.Provider
+	provider, spans, price := l.Provider, l.Spans, l.Price
 	go func() {
 		defer close(pre.done)
-		pre.summary, pre.usage, pre.err = streamSummary(ctx, provider, req)
+		pre.summary, pre.usage, pre.err = streamSummary(ctx, provider, spans, price, req)
 	}()
 	l.pre = pre
 }

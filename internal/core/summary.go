@@ -8,6 +8,7 @@ import (
 
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/prompt"
+	"github.com/antoniosarro/wisp/internal/span"
 	"github.com/antoniosarro/wisp/internal/textfmt"
 	"github.com/antoniosarro/wisp/internal/tokencount"
 )
@@ -30,7 +31,7 @@ func (l *Loop) summarize(ctx context.Context, cut int, focus string) (string, er
 
 // summaryRequest sends the summary request and counts its usage.
 func (l *Loop) summaryRequest(ctx context.Context, cut int, focus string) (string, error) {
-	text, usage, err := streamSummary(ctx, l.Provider, l.buildSummaryRequest(cut, focus))
+	text, usage, err := streamSummary(ctx, l.Provider, l.Spans, l.Price, l.buildSummaryRequest(cut, focus))
 	l.addUsage(usage)
 	return text, err
 }
@@ -61,15 +62,15 @@ var errOnlyReasoning = errors.New("the model spent the summary's length limit re
 // backend can bound it, and room for it on top of the summary's own cap.
 // It touches no loop state, so it can run in the background; the usage of
 // its requests is returned for the caller to count.
-func streamSummary(ctx context.Context, provider model.Provider, req model.Request) (string, model.Usage, error) {
+func streamSummary(ctx context.Context, provider model.Provider, spans *span.Recorder, price model.Pricing, req model.Request) (string, model.Usage, error) {
 	summaryCap := req.MaxTokens
-	text, usage, err := streamSummaryOnce(ctx, provider, req)
+	text, usage, err := streamSummaryOnce(ctx, provider, spans, price, req)
 	if err != nil && ctx.Err() == nil && !errors.Is(err, model.ErrContextOverflow) && (req.NoReasoning || errors.Is(err, errOnlyReasoning)) {
 		req.NoReasoning = false
 		req.MaxTokens = max(4*summaryCap, 8192)
 		req.ReasoningTokens = req.MaxTokens - summaryCap
 		var again model.Usage
-		text, again, err = streamSummaryOnce(ctx, provider, req)
+		text, again, err = streamSummaryOnce(ctx, provider, spans, price, req)
 		usage = sumUsage(usage, again)
 	}
 	// The retry's cap leaves room for reasoning a backend may not spend,
@@ -109,8 +110,17 @@ func capSummary(text string, limit int) string {
 
 // streamSummaryOnce sends one summary request and returns its text. A
 // response cut off at the cap with only reasoning in it is
-// errOnlyReasoning; one cut off mid-summary keeps what it has, marked.
-func streamSummaryOnce(ctx context.Context, provider model.Provider, req model.Request) (_ string, usage model.Usage, err error) {
+// errOnlyReasoning; one cut off mid-summary keeps what it has, marked. It
+// is traced as a request span, under the turn when ctx carries one, else
+// at the top of the session (a background summary).
+func streamSummaryOnce(ctx context.Context, provider model.Provider, spans *span.Recorder, price model.Pricing, req model.Request) (_ string, usage model.Usage, err error) {
+	ctx, sp := spans.Start(ctx, span.KindRequest, "compact")
+	defer func() { sp.EndErr(ctx, err) }()
+	sp.Set("gen_ai.operation.name", "chat")
+	sp.Set("gen_ai.request.max_tokens", req.MaxTokens)
+	sp.Set("wisp.compaction", true)
+	sp.Set("wisp.no_reasoning", req.NoReasoning)
+
 	events, err := provider.Stream(ctx, req)
 	if err != nil {
 		return "", usage, fmt.Errorf("starting summary: %w", err)
@@ -130,6 +140,7 @@ func streamSummaryOnce(ctx context.Context, provider model.Provider, req model.R
 			truncated = e.Truncated
 			if e.Usage != nil {
 				usage = *e.Usage
+				recordUsage(sp, price, e.Usage)
 			}
 		case model.EventError:
 			return "", usage, fmt.Errorf("summary stream: %w", e.Err)
@@ -145,6 +156,7 @@ func streamSummaryOnce(ctx context.Context, provider model.Provider, req model.R
 	if truncated && summary != "" {
 		summary += "\n(summary cut off at its length limit)"
 	}
+	sp.Set("wisp.answer", summary)
 	return summary, usage, nil
 }
 

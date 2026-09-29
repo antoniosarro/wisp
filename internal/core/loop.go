@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/antoniosarro/wisp/internal/model"
+	"github.com/antoniosarro/wisp/internal/span"
 	"github.com/antoniosarro/wisp/internal/tool"
 )
 
@@ -82,6 +83,10 @@ type Loop struct {
 	OnToolResult func(model.ToolCall, tool.Result, error) // each call as it finishes, skipped ones included
 	OnStats      func(StepStats)                          // after each request, when its stream ends
 	OnCompact    func(CompactEvent)                       // when a compaction starts and ends
+	// Spans, if set, records the session's turns, requests, and tool calls
+	// (trace.go). A sub-agent's loop leaves it nil and records under the
+	// span its ctx carries.
+	Spans *span.Recorder
 
 	stats  StepStats       // session-cumulative totals
 	ran    map[string]bool // read-only calls run this turn since the last risky one (callKey)
@@ -90,12 +95,12 @@ type Loop struct {
 }
 
 // WithSession returns a loop with l's configuration that runs session id
-// of store, from history. Nothing of l's session carries over: stats,
-// compactions, caches, and a background summary start empty. The caller
-// calls LoadCompaction next, as for a new loop.
-func (l *Loop) WithSession(store MessageStore, id string, history []model.Message) *Loop {
+// of store, from history, recording with spans. Nothing of l's session
+// carries over: stats, compactions, caches, and a background summary start
+// empty. The caller calls LoadCompaction next, as for a new loop.
+func (l *Loop) WithSession(store MessageStore, id string, history []model.Message, spans *span.Recorder) *Loop {
 	next := *l
-	next.Store, next.SessionID, next.History = store, id, history
+	next.Store, next.SessionID, next.History, next.Spans = store, id, history, spans
 	next.Compacted, next.Compactions = nil, nil
 	next.stats, next.ran, next.tokens, next.pre = StepStats{}, nil, tokenCache{}, nil
 	return &next
@@ -118,6 +123,13 @@ func (l *Loop) Run(ctx context.Context, userInput string) (answer string, err er
 	l.restoreSpills()
 	turnStart := len(l.History)
 	l.ran = map[string]bool{}
+	ctx, turn := l.Spans.Start(ctx, span.KindTurn, firstLine(userInput))
+	turn.Set("wisp.input", userInput)
+	turn.Set("wisp.message_index", turnStart)
+	defer func() {
+		turn.Set("wisp.messages", len(l.History)-turnStart)
+		turn.EndErr(ctx, err)
+	}()
 	if err := l.appendAndPersist(model.Message{Role: model.RoleUser, Content: userInput}); err != nil {
 		return "", err
 	}
@@ -325,11 +337,14 @@ func (l *Loop) stepFitting(ctx context.Context, toolChoice string) (string, []mo
 // step streams one provider response and returns its answer text, tool
 // calls, and whether it was cut off at the output-token limit. toolChoice
 // is sent only with tools: "none" forbids calls, "" leaves it to the model.
-func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model.ToolCall, truncated bool, _ error) {
+// The request is traced as a span of the turn (trace.go).
+func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model.ToolCall, truncated bool, err error) {
 	req := model.Request{Messages: l.Messages(), Tools: l.requestTools()}
 	if req.Tools != nil {
 		req.ToolChoice = toolChoice
 	}
+	ctx, sp := l.startRequestSpan(ctx, req)
+	defer func() { sp.EndErr(ctx, err) }()
 
 	start := time.Now()
 	events, err := l.Provider.Stream(ctx, req)
@@ -340,9 +355,13 @@ func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model
 	var text, reasoning, toolCallText strings.Builder
 	var toolCalls []model.ToolCall
 	var usage *model.Usage
+	var firstToken time.Duration
 	for e := range events {
 		if l.OnEvent != nil {
 			l.OnEvent(e)
+		}
+		if firstToken == 0 && (e.Kind == model.EventTextDelta || e.Kind == model.EventReasoningDelta || e.Kind == model.EventToolCall) {
+			firstToken = time.Since(start)
 		}
 		switch e.Kind {
 		case model.EventTextDelta:
@@ -373,13 +392,15 @@ func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model
 	if usage != nil {
 		l.calibrate(usage.PromptTokens, l.fixedTokens()+l.historyTokens())
 	}
-	l.recordStats(response{
+	r := response{
 		reasoning: reasoning.String(),
 		answer:    text.String(),
 		toolCalls: toolCallText.String(),
 		usage:     usage,
 		duration:  time.Since(start),
-	})
+	}
+	l.recordStats(r)
+	l.endRequestSpan(sp, r, firstToken, toolCalls, truncated)
 	return text.String(), toolCalls, truncated, nil
 }
 
@@ -421,6 +442,10 @@ func (l *Loop) dispatchAndAppend(ctx context.Context, toolCalls []model.ToolCall
 	for _, call := range toolCalls {
 		r := byID[call.ID]
 		if repeated[call.ID] {
+			_, sp := span.Start(ctx, span.KindTool, call.Name)
+			sp.Set("gen_ai.tool.call.id", call.ID)
+			sp.Set("gen_ai.tool.call.arguments", string(call.Args))
+			sp.End(span.StatusSkipped)
 			r = tool.CallResult{ToolCall: call, Result: tool.Result{Content: RepeatedCallContent, IsError: true}}
 			if l.OnToolResult != nil {
 				l.OnToolResult(call, r.Result, nil)

@@ -3,6 +3,8 @@
 //   - bridge.go: the messages a turn produces and RunTurn, which runs one
 //   - model.go: Model, its state and Update
 //   - view.go: layout and View
+//   - keys.go: key handling: cancelling and quitting, scrolling, input
+//     history, selecting blocks
 //   - blocks.go: the transcript as blocks, built from the stream and
 //     replayed history, and expanding them
 //   - render.go: drawing each kind of block: prompts, answers, reasoning,

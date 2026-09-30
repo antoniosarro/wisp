@@ -33,7 +33,14 @@ type Model struct {
 	autoScroll    bool   // follow new output; off once the user scrolls up
 	notice        string // shown in the chat box's bottom border
 
-	blocks blockList
+	blocks        blockList
+	blockLines    []lineRange // each block's lines in the last render
+	selectedBlock int         // the block Ctrl+O acts on, or -1
+
+	inputHistory []string  // submitted prompts, oldest first
+	historyIndex int       // the entry shown, len(inputHistory) for the draft
+	draft        string    // the unsent input, kept while browsing history
+	quitArmed    time.Time // first Ctrl+C, which a second one within quitWindow completes
 
 	inTurn     bool
 	turnCancel context.CancelFunc
@@ -65,13 +72,14 @@ func NewModel(ctx context.Context, loop *core.Loop, send func(tea.Msg), msgs <-c
 	sp.Style = styleSpinner
 
 	m := &Model{
-		loop:       loop,
-		ctx:        ctx,
-		send:       send,
-		msgs:       msgs,
-		input:      ti,
-		spin:       sp,
-		autoScroll: true,
+		loop:          loop,
+		ctx:           ctx,
+		send:          send,
+		msgs:          msgs,
+		input:         ti,
+		spin:          sp,
+		autoScroll:    true,
+		selectedBlock: -1,
 	}
 	m.replayHistory(loop.History)
 	return m
@@ -153,38 +161,6 @@ func (m *Model) applyCompaction(e core.CompactEvent) {
 	m.blocks = append(m.blocks, block{kind: blockNotice, text: text})
 }
 
-// handleKey handles the keys of a plain chat: sending, cancelling,
-// quitting, scrolling, and expanding blocks. The rest go to the input.
-func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
-	switch msg.String() {
-	case "ctrl+c":
-		m.quitting = true
-		if m.inTurn {
-			m.turnCancel()
-		}
-		return tea.Quit
-	case "esc":
-		if m.inTurn {
-			m.turnCancel()
-		}
-		return nil
-	case "enter":
-		return m.submit()
-	case "ctrl+o":
-		m.toggleLast(func(b *block) bool { return b.kind == blockToolCall && b.collapsible() })
-		return nil
-	case "ctrl+r":
-		m.toggleLast(func(b *block) bool { return b.kind == blockReasoning })
-		return nil
-	case "pgup", "pgdown":
-		var cmd tea.Cmd
-		m.viewport, cmd = m.viewport.Update(msg)
-		m.autoScroll = m.viewport.AtBottom()
-		return cmd
-	}
-	return m.updateInput(msg)
-}
-
 // updateInput forwards msg to the textarea, relaying out only when its
 // height may have changed.
 func (m *Model) updateInput(msg tea.Msg) tea.Cmd {
@@ -215,7 +191,7 @@ func (m *Model) submit() tea.Cmd {
 	}
 
 	m.input.SetValue("")
-	m.notice = ""
+	m.recordHistory(input)
 	m.inTurn = true
 	m.appendBlock(block{kind: blockUser, text: input})
 	m.applyLayout()
@@ -259,6 +235,12 @@ func (m *Model) frame() tea.Cmd {
 	}
 	m.framePending = true
 	return tea.Tick(frameInterval, func(time.Time) tea.Msg { return frameMsg{} })
+}
+
+// cancelTurn interrupts the running turn.
+func (m *Model) cancelTurn() {
+	m.turnCancel()
+	m.applyLayout()
 }
 
 // finishTurn settles blocks left open by the turn and reports its error.

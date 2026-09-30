@@ -115,20 +115,6 @@ func TestModelEscInterruptsTurn(t *testing.T) {
 	}
 }
 
-func TestModelCtrlCQuits(t *testing.T) {
-	m, ch := newTestModel(t, blockingProvider{})
-
-	typeText(m, "hi")
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
-	if cmd == nil {
-		t.Fatal("Ctrl+C returned no command")
-	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Error("Ctrl+C did not quit")
-	}
-	pump(t, m, ch) // the turn was cancelled, so it ends
-}
-
 // Every message from the channel must re-issue the listener, or the UI
 // stops hearing from the turn.
 func TestModelKeepsListening(t *testing.T) {

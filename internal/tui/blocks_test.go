@@ -150,27 +150,6 @@ func TestRenderSanitizesToolCall(t *testing.T) {
 	}
 }
 
-func TestCtrlOTogglesToolOutput(t *testing.T) {
-	m, _ := newTestModel(t, &testutil.ScriptedProvider{})
-	m.appendBlock(toolCallBlock(model.ToolCall{ID: "1", Name: "bash", Args: json.RawMessage(`{"command":"ls"}`)}))
-	m.blocks.resolve(model.ToolCall{ID: "1"}, tool.Result{Content: "main.go\ngo.mod"}, nil)
-	m.blocks.appendEvent(model.Event{Kind: model.EventReasoningDelta, Reasoning: "two files"}) // Ctrl+R's, not Ctrl+O's
-	m.appendBlock(block{kind: blockAnswer, text: "Two files."})
-	m.syncViewport()
-	if strings.Contains(stripANSI(m.View()), "main.go") {
-		t.Fatal("the collapsed card shows the output")
-	}
-
-	m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
-	if view := stripANSI(m.View()); !strings.Contains(view, "$ ls") || !strings.Contains(view, "main.go") {
-		t.Errorf("after Ctrl+O the output is hidden:\n%s", view)
-	}
-	m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
-	if strings.Contains(stripANSI(m.View()), "main.go") {
-		t.Error("a second Ctrl+O did not collapse the output")
-	}
-}
-
 func TestCtrlRTogglesReasoning(t *testing.T) {
 	m, _ := newTestModel(t, &testutil.ScriptedProvider{})
 	m.blocks.appendEvent(model.Event{Kind: model.EventReasoningDelta, Reasoning: "weighing the options"})

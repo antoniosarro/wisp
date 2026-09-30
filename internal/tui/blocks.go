@@ -234,6 +234,7 @@ func (m *Model) replayHistory(history []model.Message) {
 				continue
 			}
 			m.blocks = append(m.blocks, block{kind: blockUser, text: msg.Content})
+			m.recordHistory(msg.Content)
 		case model.RoleAssistant:
 			m.blocks.orphan() // a reused call ID must not match an older call
 			if msg.Content != "" && msg.Content != core.InterruptedReply {
@@ -264,10 +265,10 @@ func toolCallBlock(call model.ToolCall) block {
 	return block{kind: blockToolCall, toolCallID: call.ID, toolName: call.Name, toolArgs: call.Args}
 }
 
-// toggleLast expands or collapses the latest block that matches pred.
-func (m *Model) toggleLast(pred func(*block) bool) {
+// toggleLastReasoning expands or collapses the latest reasoning.
+func (m *Model) toggleLastReasoning() {
 	for i := len(m.blocks) - 1; i >= 0; i-- {
-		if pred(&m.blocks[i]) {
+		if m.blocks[i].kind == blockReasoning {
 			m.toggleBlock(i)
 			return
 		}
@@ -288,4 +289,47 @@ func (m *Model) toggleBlock(i int) {
 	m.autoScroll = false
 	m.syncViewport()
 	m.autoScroll = m.viewport.AtBottom()
+}
+
+// selectBlock moves the selection to the next or previous block, starting
+// from the last, and scrolls it into view.
+func (m *Model) selectBlock(next bool) {
+	n := len(m.blocks)
+	if n == 0 {
+		return
+	}
+	switch {
+	case m.selectedBlock < 0:
+		m.selectedBlock = n - 1
+	case next:
+		m.selectedBlock = min(n-1, m.selectedBlock+1)
+	default:
+		m.selectedBlock = max(0, m.selectedBlock-1)
+	}
+	m.autoScroll = false
+	m.syncViewport()
+	// Before the first render (no window size yet) there are no line
+	// ranges to scroll to; the selection still applies.
+	if m.selectedBlock < len(m.blockLines) {
+		m.viewport.SetYOffset(m.blockLines[m.selectedBlock].start)
+	}
+}
+
+// selectedBlockOrLast returns the selected block, selecting the last one
+// if none is.
+func (m *Model) selectedBlockOrLast() *block {
+	if m.selectedBlock < 0 {
+		m.selectBlock(false)
+	}
+	if m.selectedBlock < 0 {
+		return nil
+	}
+	return &m.blocks[m.selectedBlock]
+}
+
+// expandSelected opens or closes the selected block's full content.
+func (m *Model) expandSelected() {
+	if b := m.selectedBlockOrLast(); b != nil && b.collapsible() {
+		m.toggleBlock(m.selectedBlock)
+	}
 }

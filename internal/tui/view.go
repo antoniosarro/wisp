@@ -44,13 +44,17 @@ func (m *Model) syncViewport() {
 	}
 }
 
+// lineRange is a half-open range of transcript lines.
+type lineRange struct{ start, end int }
+
 // render builds the transcript, padded toward the bottom of the viewport
 // so a short chat sits next to the input. Finished blocks come from their
-// cached render.
+// cached render. It records each block's line range, to scroll to it.
 func (m *Model) render() string {
 	w := m.chatWidth()
 	var chat strings.Builder
 	lines := 0
+	m.blockLines = m.blockLines[:0]
 	for i := range m.blocks {
 		b := &m.blocks[i]
 		if b.cached == "" || b.cachedWidth != w || b.active() {
@@ -59,17 +63,37 @@ func (m *Model) render() string {
 			b.cached = ansi.Hardwrap(m.renderBlock(b, w, live), w, true)
 			b.cachedWidth = w
 		}
+		part := b.cached
+		if i == m.selectedBlock {
+			part = markGutter(part, styleSelectedBar)
+		}
 		if i > 0 {
 			chat.WriteString("\n\n") // one blank line between blocks
 			lines++
 		}
-		chat.WriteString(b.cached)
-		lines += strings.Count(b.cached, "\n") + 1
+		n := strings.Count(part, "\n") + 1
+		m.blockLines = append(m.blockLines, lineRange{lines, lines + n})
+		chat.WriteString(part)
+		lines += n
 	}
 	if len(m.blocks) == 0 {
 		return ""
 	}
+	// The padding shifts the blocks down, but only when they all fit, when
+	// there is nothing to scroll to: blockLines leaves it out.
 	return strings.Repeat("\n", max(0, m.viewport.Height-lines)) + chat.String()
+}
+
+// markGutter draws a bar in the left margin of each line.
+func markGutter(part string, style lipgloss.Style) string {
+	bar := style.Render("▌")
+	lines := strings.Split(part, "\n")
+	for i, l := range lines {
+		if strings.HasPrefix(l, " ") {
+			lines[i] = bar + l[1:]
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // renderBlock renders b; live marks the block the model is still writing.
@@ -163,7 +187,7 @@ func (m *Model) chatBox(width int) string {
 	switch {
 	case label != "":
 	case !m.autoScroll:
-		label = "↓ pgdown for latest"
+		label = "↓ ctrl+end for latest"
 	}
 	return withBorderLabel(box, label)
 }

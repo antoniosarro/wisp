@@ -2,10 +2,12 @@ package tui
 
 import "github.com/antoniosarro/wisp/internal/termsafe"
 
-// sanitize and sanitizeJSON keep model and tool text from driving the
-// terminal (package termsafe).
+// sanitize and the rest keep model and tool text from driving the
+// terminal (package termsafe). showControls is for approvals, which must
+// show exactly what runs.
 var (
 	sanitize     = termsafe.Strip
+	showControls = termsafe.Show
 	sanitizeJSON = termsafe.JSON
 )
 

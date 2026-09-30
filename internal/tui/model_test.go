@@ -22,7 +22,7 @@ func newTestModel(t *testing.T, p model.Provider) (*Model, chan tea.Msg) {
 	t.Helper()
 	ch := make(chan tea.Msg, 64)
 	loop := &core.Loop{Provider: p, Tools: tool.NewRegistry(testutil.EchoTool{})}
-	m := NewModel(context.Background(), loop, func(msg tea.Msg) { ch <- msg }, ch)
+	m := NewModel(context.Background(), loop, func(msg tea.Msg) { ch <- msg }, ch, Options{})
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	return m, ch
 }
@@ -123,7 +123,6 @@ func TestModelKeepsListening(t *testing.T) {
 		StreamMsg{Kind: model.EventTextDelta, Text: "x"},
 		ToolResultMsg{},
 		CompactMsg{},
-		NoticeMsg("note"),
 		TurnDoneMsg{},
 	} {
 		if _, cmd := m.Update(msg); cmd == nil {

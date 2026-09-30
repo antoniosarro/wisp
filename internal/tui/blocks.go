@@ -59,6 +59,7 @@ type block struct {
 	toolArgs   json.RawMessage
 	toolStatus toolStatus
 	toolResult string
+	resolved   bool          // the result arrived, or never will: nothing else may take it
 	toolStart  time.Time     // zero for replayed calls
 	toolTime   time.Duration // set once the result arrives
 }
@@ -161,13 +162,14 @@ func (b *block) finishReasoning() {
 }
 
 // resolve records a tool call's outcome on its block: the first call
-// still running with its ID. Matching running calls only, and the first
-// of them, keeps results in order when a provider sends parallel calls
-// without IDs, or reuses IDs from turn to turn.
+// with its ID still waiting for one. Matching unresolved calls only, and
+// the first of them, keeps results in order when a provider sends
+// parallel calls without IDs, or reuses IDs from turn to turn. A denied
+// call still waits: its result carries the user's note.
 func (l blockList) resolve(call model.ToolCall, res tool.Result, err error) {
 	var b *block
 	for i := range l {
-		if l[i].kind == blockToolCall && l[i].toolStatus == toolRunning && l[i].toolCallID == call.ID {
+		if l[i].kind == blockToolCall && !l[i].resolved && l[i].toolCallID == call.ID {
 			b = &l[i]
 			break
 		}
@@ -176,6 +178,7 @@ func (l blockList) resolve(call model.ToolCall, res tool.Result, err error) {
 		return
 	}
 	b.invalidate()
+	b.resolved = true
 	if !b.toolStart.IsZero() {
 		b.toolTime = time.Since(b.toolStart)
 	}
@@ -202,11 +205,14 @@ func (l *blockList) settle(err error) {
 		if b.kind == blockReasoning && !b.reasoningDone {
 			b.finishReasoning()
 		}
-		if b.kind == blockToolCall && b.toolStatus == toolRunning {
-			b.toolTime = time.Since(b.toolStart)
-			b.toolStatus = toolFailed
-			b.toolResult = "interrupted before a result was received"
-			b.invalidate()
+		if b.kind == blockToolCall && !b.resolved {
+			b.resolved = true
+			if b.toolStatus == toolRunning {
+				b.toolTime = time.Since(b.toolStart)
+				b.toolStatus = toolFailed
+				b.toolResult = "interrupted before a result was received"
+				b.invalidate()
+			}
 		}
 	}
 	switch {
@@ -253,7 +259,8 @@ func (m *Model) replayHistory(history []model.Message) {
 // orphan fails replayed calls that no saved result resolved.
 func (l blockList) orphan() {
 	for i := range l {
-		if b := &l[i]; b.kind == blockToolCall && b.toolStatus == toolRunning {
+		if b := &l[i]; b.kind == blockToolCall && !b.resolved {
+			b.resolved = true
 			b.toolStatus = toolFailed
 			b.toolResult = "No saved result; execution may have been interrupted."
 		}
@@ -263,6 +270,31 @@ func (l blockList) orphan() {
 // toolCallBlock is a running call's block.
 func toolCallBlock(call model.ToolCall) block {
 	return block{kind: blockToolCall, toolCallID: call.ID, toolName: call.Name, toolArgs: call.Args}
+}
+
+// answerPermission records an approval decision on the call's block: a
+// denial marks it, an approval restarts its timer so the wait for the
+// user isn't counted. Requests without a call ID match by name and args.
+func (m *Model) answerPermission(req PermissionRequestMsg, allow bool) {
+	var b *block
+	for i := range m.blocks {
+		c := &m.blocks[i]
+		if c.kind != blockToolCall || c.toolStatus != toolRunning {
+			continue
+		}
+		if req.CallID != "" && c.toolCallID == req.CallID || req.CallID == "" && c.toolName == req.Name && string(c.toolArgs) == string(req.Args) {
+			b = c
+			break
+		}
+	}
+	switch {
+	case b == nil:
+	case allow:
+		b.toolStart = time.Now()
+	default:
+		b.toolStatus = toolDenied
+		b.invalidate()
+	}
 }
 
 // toggleLastReasoning expands or collapses the latest reasoning.

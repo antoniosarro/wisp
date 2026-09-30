@@ -35,6 +35,10 @@ One-shot runs ask on the terminal: `[y] allow  [a] always allow ...  [N] deny`.
   show control characters in arguments visibly (`␛`, `␍`) rather than
   letting the terminal act on them. The TUI box says how many lines are out
   of view.
+- **Writes say where they land.** `write`, `edit`, and `multi_edit` follow
+  symlinks, replacing the target. When the path is a link, the TUI box names
+  the target too (`notes.txt → ~/.bashrc`), so a link in a repository can't
+  pass a write to another file off as a write to itself.
 
 ## "Always allow"
 

@@ -12,7 +12,6 @@ import (
 
 	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
-	"github.com/antoniosarro/wisp/internal/permission"
 	"github.com/antoniosarro/wisp/internal/testutil"
 	"github.com/antoniosarro/wisp/internal/tool"
 )
@@ -149,20 +148,5 @@ func TestRunTurnRecoversPanic(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("RunTurn's channel did not close after the panic")
-	}
-}
-
-func TestDenyPrompterDeniesAndSaysWhy(t *testing.T) {
-	var got []tea.Msg
-	p := DenyPrompter{Send: func(m tea.Msg) { got = append(got, m) }}
-
-	if d := p.Prompt("bash", json.RawMessage(`{"command":"ls"}`)); d != permission.Deny {
-		t.Errorf("Prompt = %v, want Deny", d)
-	}
-	if len(got) != 1 {
-		t.Fatalf("sent %d messages, want one notice: %+v", len(got), got)
-	}
-	if n, ok := got[0].(NoticeMsg); !ok || !strings.Contains(string(n), "Denied bash") {
-		t.Errorf("sent %+v, want a NoticeMsg naming the call", got[0])
 	}
 }

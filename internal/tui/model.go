@@ -14,19 +14,27 @@ import (
 
 	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
+	"github.com/antoniosarro/wisp/internal/permission"
 )
 
+// Options is the static session info the UI shows.
+type Options struct {
+	WorkDir string // where file tools act, shown on approvals
+}
+
 // Model is the Bubble Tea frontend: a transcript viewport, a prompt input,
-// and the state of the in-flight turn.
+// and the state of the in-flight turn and its pending permission requests.
 type Model struct {
 	loop *core.Loop
 	ctx  context.Context
 	send func(tea.Msg)
 	msgs <-chan tea.Msg
+	opts Options
 
 	viewport viewport.Model
 	input    textarea.Model
 	spin     spinner.Model
+	approval viewport.Model // the front request's details
 
 	width, height int
 	ready         bool   // the viewport exists: a WindowSizeMsg has come
@@ -45,6 +53,16 @@ type Model struct {
 	inTurn     bool
 	turnCancel context.CancelFunc
 	turnDone   <-chan struct{} // closed when the latest turn's goroutine exits
+	pending    []PermissionRequestMsg
+
+	// Approval keys count only after the prompt has been visible, and the
+	// user has paused typing, for approvalGuard: a prompt that appears
+	// mid-sentence must not take the next letter as an answer.
+	pendingSince time.Time
+	lastKey      time.Time
+	noting       bool        // typing a note to send with a denial
+	noteDraft    string      // the draft set aside while noting
+	approvalKey  approvalKey // what the approval viewport holds
 
 	dirty        bool // transcript changed since the last render
 	framePending bool // a frameMsg is scheduled
@@ -55,7 +73,7 @@ const inputPlaceholder = "ask wisp..."
 
 // NewModel builds a Model around loop, replaying its History. msgs is the
 // receive side of the channel send writes to.
-func NewModel(ctx context.Context, loop *core.Loop, send func(tea.Msg), msgs <-chan tea.Msg) *Model {
+func NewModel(ctx context.Context, loop *core.Loop, send func(tea.Msg), msgs <-chan tea.Msg, opts Options) *Model {
 	ti := textarea.New()
 	ti.Placeholder = inputPlaceholder
 	ti.ShowLineNumbers = false
@@ -76,6 +94,8 @@ func NewModel(ctx context.Context, loop *core.Loop, send func(tea.Msg), msgs <-c
 		ctx:           ctx,
 		send:          send,
 		msgs:          msgs,
+		opts:          opts,
+		approval:      viewport.New(1, 1),
 		input:         ti,
 		spin:          sp,
 		autoScroll:    true,
@@ -111,6 +131,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
 		if m.inTurn { // running calls show the spinner
+			if m.pruneStale() {
+				m.applyLayout()
+			}
 			m.syncViewport()
 		}
 		return m, cmd
@@ -140,8 +163,16 @@ func (m *Model) handleTurnMsg(msg tea.Msg) bool {
 		m.blocks.resolve(msg.Call, msg.Result, msg.Err)
 	case CompactMsg:
 		m.applyCompaction(core.CompactEvent(msg))
-	case NoticeMsg:
-		m.blocks = append(m.blocks, block{kind: blockNotice, text: string(msg)})
+	case PermissionRequestMsg:
+		if msg.Context != nil && msg.Context.Err() != nil {
+			return true
+		}
+		if len(m.pending) == 0 {
+			m.pendingSince = time.Now()
+		}
+		m.pending = append(m.pending, msg)
+		m.approval.GotoTop()
+		m.applyLayout()
 	default:
 		return false
 	}
@@ -237,9 +268,17 @@ func (m *Model) frame() tea.Cmd {
 	return tea.Tick(frameInterval, func(time.Time) tea.Msg { return frameMsg{} })
 }
 
-// cancelTurn interrupts the running turn.
+// cancelTurn interrupts the running turn and denies its pending approvals.
 func (m *Model) cancelTurn() {
 	m.turnCancel()
+	for _, req := range m.pending {
+		select {
+		case req.Reply <- Answer{Decision: permission.Deny}:
+		default:
+		}
+	}
+	m.pending = nil
+	m.stopNoting()
 	m.applyLayout()
 }
 
@@ -250,6 +289,8 @@ func (m *Model) finishTurn(err error) {
 		m.turnCancel()
 		m.turnCancel = nil
 	}
+	m.pending = nil
+	m.stopNoting()
 	m.blocks.settle(err)
 	m.syncViewport()
 }

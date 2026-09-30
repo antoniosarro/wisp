@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -195,6 +196,20 @@ func formatToolTime(took time.Duration) string {
 // renderToolDenied draws a call the user denied.
 func renderToolDenied(name string, args json.RawMessage, width int) string {
 	return boxed(styleToolCardDenied, width, toolHeader(styleToolDenied.Render("⊘"), name, args)+" "+styleToolDenied.Render("denied"))
+}
+
+// displayPath abbreviates the home directory to ~ and, if width > 0, keeps
+// the tail of p within width cells.
+func displayPath(p string, width int) string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if rest, ok := strings.CutPrefix(p, home); ok && (rest == "" || rest[0] == os.PathSeparator) {
+			p = "~" + rest
+		}
+	}
+	if w := ansi.StringWidth(p); width > 0 && w > width {
+		p = ansi.TruncateLeft(p, w-width+1, "…")
+	}
+	return p
 }
 
 // renderInputBox frames the prompt input.

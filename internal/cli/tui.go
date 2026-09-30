@@ -34,13 +34,14 @@ func runTUI(ctx context.Context, cfg Config, provider *openaicompat.Client, info
 
 	// Sub-agents' progress shows in a later version of the UI; printing it
 	// would draw over this one.
-	loop, cleanup, err := newLoop(cfg, provider, info, new(atomic.Bool), tui.DenyPrompter{Send: send}, func(agent.Event) {})
+	loop, cleanup, err := newLoop(cfg, provider, info, new(atomic.Bool), tui.NewPrompter(send, done), func(agent.Event) {})
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	m := tui.NewModel(ctx, loop, send, msgCh)
+	wd, _ := os.Getwd()
+	m := tui.NewModel(ctx, loop, send, msgCh, tui.Options{WorkDir: wd})
 	_, err = tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(tui.NewInput(os.Stdin)), tea.WithAltScreen()).Run()
 	cancel() // stop any in-flight turn, then let it record its results
 	m.Wait()

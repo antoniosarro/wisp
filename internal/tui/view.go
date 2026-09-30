@@ -8,15 +8,31 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// applyLayout recomputes component sizes from the terminal size and the
-// input's height.
+// applyLayout recomputes component sizes from the terminal size and
+// whatever currently occupies the footer: the input, or an approval.
 func (m *Model) applyLayout() {
 	if m.width <= 0 || m.height <= 0 {
 		return
 	}
 	m.input.SetWidth(max(1, m.width-6))
 	m.input.SetHeight(min(5, max(1, m.height-5), max(1, m.input.LineCount()))) // leave room for a 1-line chat box
-	boxHeight := max(0, m.height-lipgloss.Height(m.footer())-2)                // chat box border
+	if len(m.pending) > 0 {
+		req := m.pending[0]
+		m.approval.Width = max(1, m.width-4)
+		// A write's details read the file and diff it line by line: they
+		// are rebuilt only when the request or the size changes.
+		if key := (approvalKey{req.Reply, m.width, m.height}); key != m.approvalKey {
+			details := permissionDetails(req.Name, req.Args, m.opts.WorkDir)
+			if req.Agent != "" {
+				details = styleSpinner.Render(req.Agent) + styleDim.Render(" ▸ ") + details
+			}
+			details = ansi.Hardwrap(details, m.approval.Width, true)
+			m.approval.Height = max(1, min(14, m.height/2-4, lipgloss.Height(details)))
+			m.approval.SetContent(details)
+			m.approvalKey = key
+		}
+	}
+	boxHeight := max(0, m.height-lipgloss.Height(m.footer())-2) // chat box border
 	if !m.ready {
 		m.viewport = viewport.New(m.chatWidth(), boxHeight)
 		m.ready = true
@@ -25,6 +41,12 @@ func (m *Model) applyLayout() {
 		m.viewport.Height = boxHeight
 	}
 	m.syncViewport()
+}
+
+// approvalKey identifies what the approval viewport shows.
+type approvalKey struct {
+	reply         chan<- Answer
+	width, height int
 }
 
 // chatWidth is the transcript's content width inside the chat box.
@@ -167,6 +189,11 @@ func (m *Model) View() string {
 	if m.width < 20 || m.height < 8 {
 		return fitView("Terminal too small; resize to 20×8", m.width, m.height)
 	}
+	if m.viewport.Height <= 0 {
+		// The footer (a tall approval box) takes the whole screen; an
+		// empty chat box would push its bottom off it.
+		return fitView(m.footer(), m.width, m.height)
+	}
 	return fitView(m.chatBox(max(1, m.width-2))+"\n"+m.footer(), m.width, m.height)
 }
 
@@ -175,8 +202,20 @@ func fitView(s string, w, h int) string {
 	return lipgloss.NewStyle().MaxWidth(max(1, w)).MaxHeight(max(1, h)).Render(s)
 }
 
-// footer is what sits below the chat box: the input.
+// footer is what sits below the chat box: the input, or the front
+// approval, with the note input while one is written.
 func (m *Model) footer() string {
+	switch {
+	case m.noting && len(m.pending) > 0:
+		input := renderInputBox(m.input.View(), m.width)
+		box := m.renderApproval(true)
+		if lipgloss.Height(box)+lipgloss.Height(input) > m.height {
+			box = m.renderApproval(false) // keep the keys and the note input on screen
+		}
+		return box + "\n" + input
+	case len(m.pending) > 0:
+		return m.renderApproval(true)
+	}
 	return renderInputBox(m.input.View(), m.width)
 }
 
@@ -199,13 +238,30 @@ func withBorderLabel(box, label string) string {
 	}
 	lines := strings.Split(box, "\n")
 	last := len(lines) - 1
-	lines[last] = borderLine("╰", "╯", styleDim.Render(label), lipgloss.Width(lines[last]), styleBorderLine)
+	lines[last] = borderLine("╰", "╯", styleDim.Render(label), "", lipgloss.Width(lines[last]), styleBorderLine)
 	return strings.Join(lines, "\n")
 }
 
-// borderLine draws a width-wide horizontal border with label embedded.
-func borderLine(start, end, label string, width int, border lipgloss.Style) string {
-	label = ansi.Truncate(label, max(0, width-6), "…")
-	used := 5 + ansi.StringWidth(label) // "╰─ " + label + " " + end
-	return border.Render(start+"─ ") + label + border.Render(" "+strings.Repeat("─", max(0, width-used))) + border.Render(end)
+// withTopLabel writes left- and right-aligned labels into a box's top border.
+func withTopLabel(box, left, right string, border lipgloss.Style) string {
+	lines := strings.Split(box, "\n")
+	lines[0] = borderLine("╭", "╮", left, right, lipgloss.Width(lines[0]), border)
+	return strings.Join(lines, "\n")
+}
+
+// borderLine draws a width-wide horizontal border with embedded labels.
+func borderLine(start, end, left, right string, width int, border lipgloss.Style) string {
+	left = ansi.Truncate(left, max(0, width-6), "…")
+	used := 5 + ansi.StringWidth(left) // "╭─ " + left + " " + end
+	if right != "" {
+		used += ansi.StringWidth(right) + 3 // " " + right + " ─"
+	}
+	if used > width {
+		right, used = "", 5+ansi.StringWidth(left)
+	}
+	line := border.Render(start+"─ ") + left + border.Render(" "+strings.Repeat("─", max(0, width-used)))
+	if right != "" {
+		line += border.Render(" ") + right + border.Render(" ─")
+	}
+	return line + border.Render(end)
 }

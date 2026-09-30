@@ -5,6 +5,8 @@
 //   - view.go: layout and View
 //   - keys.go: key handling: cancelling and quitting, scrolling, input
 //     history, selecting blocks
+//   - permission.go: Prompter, which asks for approval through the UI
+//   - approval.go: what an approval shows: the call, a diff for edits
 //   - blocks.go: the transcript as blocks, built from the stream and
 //     replayed history, and expanding them
 //   - render.go: drawing each kind of block: prompts, answers, reasoning,
@@ -19,14 +21,12 @@ package tui
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
-	"github.com/antoniosarro/wisp/internal/permission"
 	"github.com/antoniosarro/wisp/internal/tool"
 )
 
@@ -48,9 +48,6 @@ type TurnDoneMsg struct {
 
 // CompactMsg is a compaction's start or end forwarded from core.Loop.
 type CompactMsg core.CompactEvent
-
-// NoticeMsg is a line for the transcript from outside the turn's stream.
-type NoticeMsg string
 
 // RunTurn runs loop.Run in a goroutine, forwarding its callbacks and
 // completion through send as tea.Msgs. Callers must not start another turn
@@ -83,17 +80,4 @@ func recoverTurn(send func(tea.Msg)) {
 	if p := recover(); p != nil {
 		send(TurnDoneMsg{Err: fmt.Errorf("internal error: %v", p)})
 	}
-}
-
-// DenyPrompter denies every call that needs approval and says so in the
-// transcript. The terminal prompter can't read stdin while Bubble Tea owns
-// it, and the UI has no approval prompt of its own yet.
-type DenyPrompter struct {
-	Send func(tea.Msg)
-}
-
-// Prompt denies, telling the user why.
-func (p DenyPrompter) Prompt(name string, _ json.RawMessage) permission.Decision {
-	p.Send(NoticeMsg(fmt.Sprintf("Denied %s: the TUI can't ask for approval yet. Run wisp with a prompt argument to be asked in the terminal.", name)))
-	return permission.Deny
 }

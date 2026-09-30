@@ -1,22 +1,36 @@
 package tui
 
 import (
+	"slices"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/antoniosarro/wisp/internal/permission"
 )
 
-// quitWindow is how soon a second Ctrl+C must follow the first to exit.
-const quitWindow = 2 * time.Second
+const (
+	// approvalGuard is how long a prompt must be visible, and typing must
+	// have paused, before y/a/n/t answer it.
+	approvalGuard = 400 * time.Millisecond
+	// quitWindow is how soon a second Ctrl+C must follow the first to exit.
+	quitWindow = 2 * time.Second
+)
 
-// handleKey handles a key press: cancelling and quitting, sending,
-// scrolling, history, and selecting and expanding blocks. The rest go to
-// the input.
+// handleKey handles a key press: answering approvals, cancelling and
+// quitting, sending, scrolling, history, and selecting and expanding
+// blocks. The rest go to the input.
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	m.notice = ""
 	k := msg.String()
 	now := time.Now()
+	typing := now.Sub(m.lastKey) < approvalGuard
+	m.lastKey = now
 
+	if m.noting && len(m.pending) > 0 && k != "ctrl+c" {
+		return m.handleNoteKey(msg)
+	}
 	if (k == "ctrl+c" || k == "esc") && m.inTurn && m.turnCancel != nil {
 		// A second Ctrl+C quits even if the turn hasn't wound down, e.g. a
 		// stream that ignores cancellation.
@@ -30,6 +44,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			m.notice = "Cancelling · Ctrl+C again to exit"
 		}
 		return nil
+	}
+	if len(m.pending) > 0 {
+		return m.handlePermissionKey(msg, typing)
 	}
 
 	switch k {
@@ -144,4 +161,95 @@ func (m *Model) recallHistory(older bool) {
 		m.input.SetValue(m.inputHistory[m.historyIndex])
 	}
 	m.applyLayout()
+}
+
+// handlePermissionKey answers the front request. Letters typed while the
+// user was already typing, or right after the prompt appeared, go to the
+// draft instead: they were meant for it.
+func (m *Model) handlePermissionKey(msg tea.KeyMsg, typing bool) tea.Cmd {
+	hasty := typing || time.Since(m.pendingSince) < approvalGuard
+	var d permission.Decision
+	switch strings.ToLower(msg.String()) {
+	case "y":
+		d = permission.Allow
+	case "a":
+		d = permission.AllowAlways
+	case "n":
+		d = permission.Deny
+	case "t":
+		if !hasty {
+			m.startNoting()
+			return nil
+		}
+		return m.updateInput(msg)
+	default:
+		if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
+			return m.updateInput(msg)
+		}
+		var cmd tea.Cmd
+		m.approval, cmd = m.approval.Update(msg)
+		return cmd
+	}
+	if hasty {
+		return m.updateInput(msg)
+	}
+	m.decide(d, "")
+	return nil
+}
+
+// pruneStale drops approval requests whose call was cancelled while they
+// waited, e.g. with its sub-agent, reporting whether there were any.
+func (m *Model) pruneStale() bool {
+	n := len(m.pending)
+	m.pending = slices.DeleteFunc(m.pending, func(r PermissionRequestMsg) bool { return r.Context != nil && r.Context.Err() != nil })
+	return len(m.pending) != n
+}
+
+// decide replies to the front request and moves on to the next one.
+func (m *Model) decide(d permission.Decision, note string) {
+	req := m.pending[0]
+	req.Reply <- Answer{Decision: d, Note: note}
+	m.pending = m.pending[1:]
+	m.pendingSince = time.Now()
+	m.approval.GotoTop()
+	if req.Agent == "" { // sub-agent calls have no block in the chat
+		m.answerPermission(req, d != permission.Deny)
+	}
+	m.applyLayout()
+}
+
+// startNoting sets the draft aside so the input can take a denial note.
+func (m *Model) startNoting() {
+	m.noting, m.noteDraft = true, m.input.Value()
+	m.input.SetValue("")
+	m.input.Placeholder = "what should wisp do instead? enter denies with this note, esc goes back"
+	m.applyLayout()
+}
+
+// stopNoting restores the draft set aside by startNoting.
+func (m *Model) stopNoting() {
+	if !m.noting {
+		return
+	}
+	m.noting = false
+	m.input.SetValue(m.noteDraft)
+	m.noteDraft = ""
+	m.input.Placeholder = inputPlaceholder
+}
+
+// handleNoteKey edits the denial note: Enter denies with it, Esc goes back
+// to the prompt.
+func (m *Model) handleNoteKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "esc":
+		m.stopNoting()
+		m.applyLayout()
+		return nil
+	case "enter":
+		note := strings.TrimSpace(m.input.Value())
+		m.stopNoting()
+		m.decide(permission.Deny, note)
+		return nil
+	}
+	return m.updateInput(msg)
 }

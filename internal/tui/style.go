@@ -12,33 +12,54 @@ import (
 var (
 	lightTheme    = os.Getenv("WISP_THEME") == "light"
 	colorMagenta  = themeColor("#D741F5", "#9B1FB5")
+	colorViolet   = themeColor("#6252F0", "#4B3BD0")
 	colorLavender = themeColor("#A29BF5", "#5B4FC4")
 	colorCyan     = themeColor("#50DCEB", "#0B7E8C")
 	colorMint     = themeColor("#5EE6B0", "#12825A")
 	colorRose     = themeColor("#FF5C8A", "#C0204F")
+	colorAmber    = themeColor("#FFB86C", "#A85A00")
 	colorText     = themeColor("#F9F9FF", "#1C1A33")
 	colorDim      = themeColor("#8E8BB0", "#6B6890")
 	colorMuted    = themeColor("#4A4775", "#B8B4DC")
 	colorPanel    = themeColor("#26243F", "#ECEBFA")
 
-	styleUserPrompt   = lipgloss.NewStyle().Foreground(colorText).Background(colorPanel)
-	styleUserBar      = lipgloss.NewStyle().Foreground(colorMagenta).Background(colorPanel)
-	styleAnswerPrefix = lipgloss.NewStyle().Foreground(colorCyan)
-	styleNoticePrefix = lipgloss.NewStyle().Foreground(colorDim)
-	styleReasoning    = lipgloss.NewStyle().Foreground(colorDim).Italic(true)
-	styleSpinner      = lipgloss.NewStyle().Foreground(colorMagenta)
+	styleUserPrompt      = lipgloss.NewStyle().Foreground(colorText).Background(colorPanel)
+	styleUserBar         = lipgloss.NewStyle().Foreground(colorMagenta).Background(colorPanel)
+	styleAnswerPrefix    = lipgloss.NewStyle().Foreground(colorCyan)
+	styleNoticePrefix    = lipgloss.NewStyle().Foreground(colorDim)
+	styleReasoning       = lipgloss.NewStyle().Foreground(colorDim).Italic(true)
+	styleReasoningHeader = lipgloss.NewStyle().Foreground(colorLavender).Bold(true)
+	styleReasoningBorder = lipgloss.NewStyle().Foreground(colorMuted)
+	styleSpinner         = lipgloss.NewStyle().Foreground(colorMagenta)
 
-	styleInputBox = boxStyle(colorMuted)
-	styleChatBox  = boxStyle(colorMuted)
+	styleToolCard        = boxStyle(colorMuted)
+	styleToolCardRunning = boxStyle(colorLavender)
+	styleToolCardFailed  = boxStyle(colorRose)
+	styleToolCardDenied  = boxStyle(colorAmber)
+	styleInputBox        = boxStyle(colorMuted)
+	styleChatBox         = boxStyle(colorMuted)
 
-	styleToolText   = lipgloss.NewStyle().Bold(true).Foreground(colorLavender)
+	styleToolText   = lipgloss.NewStyle().Bold(true)
 	styleToolDetail = lipgloss.NewStyle().Foreground(colorDim)
 	styleToolOK     = lipgloss.NewStyle().Foreground(colorMint)
 	styleToolFailed = lipgloss.NewStyle().Foreground(colorRose)
+	styleToolDenied = lipgloss.NewStyle().Foreground(colorAmber)
+	styleToolError  = lipgloss.NewStyle().Foreground(colorRose)
+	styleInlineCode = lipgloss.NewStyle().Foreground(colorCyan).Background(colorPanel).Padding(0, 1)
+	styleBullet     = lipgloss.NewStyle().Foreground(colorText)
+	styleDirName    = lipgloss.NewStyle().Bold(true).Foreground(colorLavender)
 
 	styleError      = lipgloss.NewStyle().Bold(true).Foreground(colorRose)
 	styleBorderLine = lipgloss.NewStyle().Foreground(colorMuted)
 	styleDim        = lipgloss.NewStyle().Foreground(colorDim)
+	styleChatMargin = lipgloss.NewStyle().PaddingLeft(chatMarginLeft)
+)
+
+// The chat's left margin and the marker column before message text.
+const (
+	chatMarginLeft  = 2
+	chatPrefixWidth = 2 // message marker and following space
+	chatContentLeft = chatMarginLeft + chatPrefixWidth
 )
 
 // themeColor picks the dark or light variant for $WISP_THEME.

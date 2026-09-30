@@ -3,7 +3,12 @@
 //   - bridge.go: the messages a turn produces and RunTurn, which runs one
 //   - model.go: Model, its state and Update
 //   - view.go: layout and View
-//   - transcript.go: the conversation as the UI shows it
+//   - blocks.go: the transcript as blocks, built from the stream and
+//     replayed history, and expanding them
+//   - render.go: drawing each kind of block: prompts, answers, reasoning,
+//     tool cards
+//   - markdown.go: answers as Markdown, with highlighted code blocks
+//   - toolview.go: an expanded tool call's output, laid out per tool
 //   - style.go: palette and shared styles
 //   - sanitize.go: keeping model and tool text from driving the terminal
 //   - input.go, input_unix.go, input_other.go: terminal input that keeps

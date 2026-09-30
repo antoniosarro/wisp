@@ -45,16 +45,91 @@ func (m *Model) syncViewport() {
 }
 
 // render builds the transcript, padded toward the bottom of the viewport
-// so a short chat sits next to the input.
+// so a short chat sits next to the input. Finished blocks come from their
+// cached render.
 func (m *Model) render() string {
-	if len(m.entries) == 0 {
+	w := m.chatWidth()
+	var chat strings.Builder
+	lines := 0
+	for i := range m.blocks {
+		b := &m.blocks[i]
+		if b.cached == "" || b.cachedWidth != w || b.active() {
+			live := m.inTurn && i == len(m.blocks)-1
+			// Hardwrap as well: a word longer than the line would overflow the box.
+			b.cached = ansi.Hardwrap(m.renderBlock(b, w, live), w, true)
+			b.cachedWidth = w
+		}
+		if i > 0 {
+			chat.WriteString("\n\n") // one blank line between blocks
+			lines++
+		}
+		chat.WriteString(b.cached)
+		lines += strings.Count(b.cached, "\n") + 1
+	}
+	if len(m.blocks) == 0 {
 		return ""
 	}
-	w := m.chatWidth()
-	// Hardwrap as well: a word longer than the line would overflow the box.
-	chat := ansi.Hardwrap(m.entries.render(w, m.spin.View()), w, true)
-	pad := max(0, m.viewport.Height-(strings.Count(chat, "\n")+1))
-	return strings.Repeat("\n", pad) + chat
+	return strings.Repeat("\n", max(0, m.viewport.Height-lines)) + chat.String()
+}
+
+// renderBlock renders b; live marks the block the model is still writing.
+func (m *Model) renderBlock(b *block, w int, live bool) string {
+	b = b.sanitized()
+	switch b.kind {
+	case blockUser:
+		return renderUserPrompt(b.text, w)
+	case blockAnswer:
+		if live {
+			return renderLiveAnswer(b.text, w)
+		}
+		return renderAnswer(b.text, w)
+	case blockNotice:
+		return renderNotice(b.text, w)
+	case blockTurnError:
+		return renderTurnError(b.text, w)
+	case blockReasoning:
+		return m.renderReasoningBlock(b, w)
+	case blockToolCall:
+		return m.renderToolCallBlock(b, w)
+	}
+	return ""
+}
+
+// renderReasoningBlock shows reasoning as a live timer while it streams,
+// then as a one-line summary, or in full when expanded.
+func (m *Model) renderReasoningBlock(b *block, w int) string {
+	switch {
+	case b.expanded:
+		suffix := ""
+		if !b.reasoningDone {
+			suffix = " " + m.spin.View()
+		}
+		return styleChatMargin.Render(renderReasoningFull(b.reasoningText, suffix, w))
+	case !b.reasoningDone:
+		elapsed := formatDuration(elapsedSince(b.reasoningStart))
+		return styleChatMargin.Render(m.spin.View() + " " + styleReasoning.Render("Thinking… "+elapsed) + styleDim.Render(" · esc to interrupt"))
+	default:
+		return styleChatMargin.Render(renderReasoningSummary(b.reasoningText, b.reasoningTime))
+	}
+}
+
+// renderToolCallBlock aligns tool cards with the answer body column.
+func (m *Model) renderToolCallBlock(b *block, w int) string {
+	w = max(1, w-chatContentLeft)
+	var card string
+	switch b.toolStatus {
+	case toolRunning:
+		card = renderToolRunning(m.spin.View(), b.toolName, b.toolArgs, elapsedSince(b.toolStart), w)
+	case toolDenied:
+		card = renderToolDenied(b.toolName, b.toolArgs, w)
+	default:
+		failed := b.toolStatus == toolFailed
+		card = renderToolResult(b.toolName, b.toolArgs, b.toolResult, b.toolTime, w, failed, b.expanded)
+		if b.expanded {
+			card += "\n\n" + renderToolOutput(b.toolName, b.toolArgs, b.toolResult, failed, w)
+		}
+	}
+	return lipgloss.NewStyle().PaddingLeft(chatContentLeft).Render(card)
 }
 
 // View draws the chat box over the input.
@@ -78,7 +153,7 @@ func fitView(s string, w, h int) string {
 
 // footer is what sits below the chat box: the input.
 func (m *Model) footer() string {
-	return boxed(styleInputBox, m.width, m.input.View())
+	return renderInputBox(m.input.View(), m.width)
 }
 
 // chatBox frames the transcript, with any notice in its bottom border.
@@ -87,8 +162,6 @@ func (m *Model) chatBox(width int) string {
 	label := m.notice
 	switch {
 	case label != "":
-	case m.inTurn:
-		label = "esc to interrupt"
 	case !m.autoScroll:
 		label = "↓ pgdown for latest"
 	}

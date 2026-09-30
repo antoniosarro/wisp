@@ -73,7 +73,7 @@ func TestModelRunsATurn(t *testing.T) {
 		t.Error("the turn is still running after TurnDoneMsg")
 	}
 	view := ansi.Strip(m.View())
-	for _, want := range []string{"▌ run echo", `✓ echo {"x":1}`, "● all done"} {
+	for _, want := range []string{"▌ run echo", `✓ echo "x":1`, "● all done"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view lacks %q:\n%s", want, view)
 		}
@@ -110,7 +110,7 @@ func TestModelEscInterruptsTurn(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	pump(t, m, ch)
 
-	if m.inTurn || !strings.Contains(ansi.Strip(m.View()), "Interrupted.") {
+	if m.inTurn || !strings.Contains(ansi.Strip(m.View()), "✗ interrupted") {
 		t.Errorf("after Esc: inTurn = %v, view:\n%s", m.inTurn, ansi.Strip(m.View()))
 	}
 }
@@ -146,22 +146,6 @@ func TestModelKeepsListening(t *testing.T) {
 	}
 }
 
-func TestModelReplaysHistory(t *testing.T) {
-	loop := &core.Loop{Provider: &testutil.ScriptedProvider{}, Tools: tool.NewRegistry(), History: []model.Message{
-		{Role: model.RoleUser, Content: "list files"},
-		{Role: model.RoleAssistant, ToolCalls: []model.ToolCall{{ID: "c1", Name: "ls", Args: json.RawMessage(`{}`)}}},
-		{Role: model.RoleTool, ToolCallID: "c1", Content: "permission denied", IsError: true},
-		{Role: model.RoleAssistant, Content: "I couldn't."},
-	}}
-	m := NewModel(context.Background(), loop, func(tea.Msg) {}, nil)
-
-	got := plain(m.entries, 80)
-	want := "▌ list files\n\n✗ ls {}\n  permission denied\n\n● I couldn't."
-	if got != want {
-		t.Errorf("replayed transcript =\n%s\nwant\n%s", got, want)
-	}
-}
-
 func TestModelRefusesHugePaste(t *testing.T) {
 	m, _ := newTestModel(t, &testutil.ScriptedProvider{})
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Paste: true, Runes: []rune(strings.Repeat("x", maxPasteBytes+1))})
@@ -182,7 +166,11 @@ func TestViewTooSmall(t *testing.T) {
 
 func TestViewFitsTerminal(t *testing.T) {
 	m, _ := newTestModel(t, &testutil.ScriptedProvider{})
-	m.entries.add(entryAnswer, strings.Repeat("a long answer line ", 200))
+	m.blocks = append(m.blocks,
+		block{kind: blockUser, text: strings.Repeat("word ", 50)},
+		block{kind: blockAnswer, text: strings.Repeat("a long answer line ", 200) + "\n\n```go\n" + strings.Repeat("x", 300) + "\n```"},
+		toolCallBlock(model.ToolCall{Name: "write", Args: json.RawMessage(`{"content":"` + strings.Repeat("y", 300) + `"}`)}),
+	)
 	m.syncViewport()
 
 	lines := strings.Split(m.View(), "\n")

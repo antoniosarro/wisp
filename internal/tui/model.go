@@ -14,7 +14,6 @@ import (
 
 	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
-	"github.com/antoniosarro/wisp/internal/tool"
 )
 
 // Model is the Bubble Tea frontend: a transcript viewport, a prompt input,
@@ -34,7 +33,7 @@ type Model struct {
 	autoScroll    bool   // follow new output; off once the user scrolls up
 	notice        string // shown in the chat box's bottom border
 
-	entries transcript
+	blocks blockList
 
 	inTurn     bool
 	turnCancel context.CancelFunc
@@ -76,27 +75,6 @@ func NewModel(ctx context.Context, loop *core.Loop, send func(tea.Msg), msgs <-c
 	}
 	m.replayHistory(loop.History)
 	return m
-}
-
-// replayHistory shows a resumed session's conversation: what the user
-// asked, the answers, and the calls made, all as finished.
-func (m *Model) replayHistory(history []model.Message) {
-	for _, msg := range history {
-		switch msg.Role {
-		case model.RoleUser:
-			m.entries.add(entryUser, msg.Content)
-		case model.RoleAssistant:
-			if strings.TrimSpace(msg.Content) != "" {
-				m.entries.add(entryAnswer, msg.Content)
-			}
-			for _, c := range msg.ToolCalls {
-				m.entries.apply(model.Event{Kind: model.EventToolCall, ToolCall: &c})
-			}
-		case model.RoleTool:
-			m.entries.resolve(ToolResultMsg{Call: model.ToolCall{ID: msg.ToolCallID}, Result: tool.Result{Content: msg.Content, IsError: msg.IsError}})
-		}
-	}
-	m.entries.settle(nil)
 }
 
 // Init starts the message pump, the spinner, and the cursor blink.
@@ -149,13 +127,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) handleTurnMsg(msg tea.Msg) bool {
 	switch msg := msg.(type) {
 	case StreamMsg:
-		m.entries.apply(model.Event(msg))
+		m.blocks.appendEvent(model.Event(msg))
 	case ToolResultMsg:
-		m.entries.resolve(msg)
+		m.blocks.resolve(msg.Call, msg.Result, msg.Err)
 	case CompactMsg:
 		m.applyCompaction(core.CompactEvent(msg))
 	case NoticeMsg:
-		m.entries.add(entryNotice, string(msg))
+		m.blocks = append(m.blocks, block{kind: blockNotice, text: string(msg)})
 	default:
 		return false
 	}
@@ -165,18 +143,18 @@ func (m *Model) handleTurnMsg(msg tea.Msg) bool {
 
 // applyCompaction notes a compaction's start and end in the transcript.
 func (m *Model) applyCompaction(e core.CompactEvent) {
+	text := "Compacting the conversation…"
 	switch {
-	case !e.Done:
-		m.entries.add(entryNotice, "Compacting the conversation…")
-	case e.Err != nil:
-		m.entries.add(entryNotice, "Compacted without a summary: "+e.Err.Error())
-	default:
-		m.entries.add(entryNotice, "Compacted the conversation.")
+	case e.Done && e.Err != nil:
+		text = "Compacted without a summary: " + e.Err.Error()
+	case e.Done:
+		text = "Compacted the conversation."
 	}
+	m.blocks = append(m.blocks, block{kind: blockNotice, text: text})
 }
 
 // handleKey handles the keys of a plain chat: sending, cancelling,
-// quitting, and scrolling. The rest go to the input.
+// quitting, scrolling, and expanding blocks. The rest go to the input.
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "ctrl+c":
@@ -192,6 +170,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "enter":
 		return m.submit()
+	case "ctrl+o":
+		m.toggleLast(func(b *block) bool { return b.kind == blockToolCall && b.collapsible() })
+		return nil
+	case "ctrl+r":
+		m.toggleLast(func(b *block) bool { return b.kind == blockReasoning })
+		return nil
 	case "pgup", "pgdown":
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
@@ -233,8 +217,7 @@ func (m *Model) submit() tea.Cmd {
 	m.input.SetValue("")
 	m.notice = ""
 	m.inTurn = true
-	m.autoScroll = true
-	m.entries.add(entryUser, input)
+	m.appendBlock(block{kind: blockUser, text: input})
 	m.applyLayout()
 
 	turnCtx, cancel := context.WithCancel(m.ctx)
@@ -278,13 +261,13 @@ func (m *Model) frame() tea.Cmd {
 	return tea.Tick(frameInterval, func(time.Time) tea.Msg { return frameMsg{} })
 }
 
-// finishTurn settles entries left open by the turn and reports its error.
+// finishTurn settles blocks left open by the turn and reports its error.
 func (m *Model) finishTurn(err error) {
 	m.inTurn = false
 	if m.turnCancel != nil {
 		m.turnCancel()
 		m.turnCancel = nil
 	}
-	m.entries.settle(err)
+	m.blocks.settle(err)
 	m.syncViewport()
 }

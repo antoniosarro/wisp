@@ -38,3 +38,19 @@ func TestSavingStateKeepsOtherFields(t *testing.T) {
 		}
 	}
 }
+
+// Global config is under $XDG_CONFIG_HOME/wisp, else ~/.config/wisp, on
+// every system: the docs and the home-manager module put it there, where
+// os.UserConfigDir would pick ~/Library/Application Support on macOS.
+func TestConfigPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	if got, want := configPath("mcp.json"), filepath.Join(home, ".config", "wisp", "mcp.json"); got != want {
+		t.Errorf("configPath = %q, want %q", got, want)
+	}
+	t.Setenv("XDG_CONFIG_HOME", "/cfg")
+	if got, want := configPath("agents"), filepath.Join("/cfg", "wisp", "agents"); got != want {
+		t.Errorf("configPath with XDG_CONFIG_HOME = %q, want %q", got, want)
+	}
+}

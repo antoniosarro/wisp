@@ -1,0 +1,33 @@
+# Maintainer: filled in by `just pkg aur`
+#
+# Builds wisp from source on Arch. `just pkg aur` fills in pkgver and the
+# checksum and puts this file next to a tarball of HEAD in dist/aur/. For
+# the AUR, once the repository is public, use the release tarball instead:
+# source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+
+pkgname=wisp
+pkgver=0.0.0
+pkgrel=1
+pkgdesc='Small agent harness with a terminal UI, built-in tools, and resumable sessions'
+arch=('x86_64' 'aarch64')
+url='https://github.com/antoniosarro/wisp'
+license=('MIT')
+makedepends=('go>=2:1.26.7')   # go.mod's toolchain; Arch builds with GOTOOLCHAIN=local
+optdepends=('git: the prompt names the current branch')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+options=('!debug')
+
+build() {
+  cd "$pkgname-$pkgver"
+  export CGO_ENABLED=0 # modernc SQLite is pure Go: a static binary
+  export GOFLAGS='-buildmode=pie -trimpath -mod=readonly -modcacherw'
+  go build -ldflags "-s -w -X github.com/antoniosarro/wisp/internal/version.Version=$pkgver" -o wisp ./cmd/wisp
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 wisp "$pkgdir/usr/bin/wisp"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

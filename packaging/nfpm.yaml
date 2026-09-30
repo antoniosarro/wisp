@@ -1,0 +1,35 @@
+# The static binary as a .deb (Ubuntu, Debian) or Arch package. Run
+# through `just pkg deb` or `just pkg archlinux`, which build the binary and
+# set VERSION, ARCH (amd64, arm64), and MAINTAINER; paths are from the
+# repository root.
+name: wisp
+version: ${VERSION}
+version_schema: none # 0.0.0.r15.gabc1234 as is: not semver, but orders right
+arch: ${ARCH}
+platform: linux
+maintainer: ${MAINTAINER}
+homepage: https://github.com/antoniosarro/wisp
+license: MIT
+section: devel
+priority: optional
+description: |
+  Small agent harness with a terminal UI.
+  Streams responses from OpenAI-compatible endpoints, runs built-in tools
+  behind permission prompts, and keeps resumable sessions.
+
+contents:
+  - src: dist/stage/wisp # the binary for ARCH; nfpm doesn't expand paths
+    dst: /usr/bin/wisp
+    file_info:
+      mode: 0755
+  - src: README.md
+    dst: /usr/share/doc/wisp/README.md
+  - src: LICENSE # where each distribution looks for it
+    dst: /usr/share/doc/wisp/copyright
+    packager: deb
+  - src: LICENSE
+    dst: /usr/share/licenses/wisp/LICENSE
+    packager: archlinux
+
+suggests:
+  - git # the prompt names the current branch (the deb only: nfpm has no Arch optdepends)

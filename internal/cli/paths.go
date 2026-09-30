@@ -24,13 +24,16 @@ func xdgPath(env, fallback string, elem ...string) (string, error) {
 	return filepath.Join(append([]string{dir, "wisp"}, elem...)...), nil
 }
 
-// configPath is under ~/.config/wisp, or "" when there is no config dir.
+// configPath is under $XDG_CONFIG_HOME/wisp, or ~/.config/wisp, on every
+// system, as for state and sessions: os.UserConfigDir would put it in
+// ~/Library/Application Support on macOS, where the docs and the
+// home-manager module don't. It is "" without a home directory.
 func configPath(elem ...string) string {
-	dir, err := os.UserConfigDir()
+	path, err := xdgPath("XDG_CONFIG_HOME", ".config", elem...)
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(append([]string{dir, "wisp"}, elem...)...)
+	return path
 }
 
 // projectPath is under workDir's .wisp, where a project overrides the

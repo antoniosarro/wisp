@@ -1,3 +1,6 @@
+# packages for Linux distributions and Nix: just pkg <recipe> (packaging/README.md)
+mod pkg 'packaging'
+
 default:
     @just --list
 

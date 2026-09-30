@@ -1,0 +1,58 @@
+# Packages of wisp for Linux distributions; run from the repository root as
+# `just pkg <recipe>` (see packaging/README.md). Artifacts go to dist/.
+
+set working-directory := '..'
+
+# 1.2.3 at the tag v1.2.3; 1.2.3.r4.gabc1234 four commits past it;
+# 0.0.0.r<commits>.g<hash> before the first tag. Deb, Arch, and Nix all
+# order these correctly.
+version := `d=$(git describe --tags --long --match 'v[0-9]*' 2>/dev/null) && { n=${d%-g*}; n=${n##*-}; t=${d%-*-g*}; t=${t#v}; if [ "$n" = 0 ]; then echo "$t"; else echo "$t.r$n.g${d##*-g}"; fi; } || echo "0.0.0.r$(git rev-list --count HEAD).g$(git rev-parse --short HEAD)"`
+
+# the package maintainer
+maintainer := 'Antonio Sarro <contact@antoniosarro.dev>'
+
+default:
+    @just --list pkg
+
+# print the version packages get
+version:
+    @echo {{version}}
+
+# static Linux binary in dist/linux-<arch>/ (amd64 or arm64)
+binary arch="amd64":
+    CGO_ENABLED=0 GOOS=linux GOARCH={{arch}} go build -trimpath \
+        -ldflags "-s -w -X github.com/antoniosarro/wisp/internal/version.Version={{version}}" \
+        -o dist/linux-{{arch}}/wisp ./cmd/wisp
+
+# .deb for Ubuntu and Debian, from the static binary; install with apt install ./<file>
+deb arch="amd64": (package "deb" arch)
+
+# Arch package (.pkg.tar.zst), from the static binary; install with pacman -U <file>
+archlinux arch="amd64": (package "archlinux" arch)
+
+[private]
+package packager arch: (binary arch)
+    mkdir -p dist/stage && cp dist/linux-{{arch}}/wisp dist/stage/wisp
+    VERSION={{version}} ARCH={{arch}} MAINTAINER="{{maintainer}}" \
+        nfpm package --config packaging/nfpm.yaml --packager {{packager}} --target dist/
+
+# every Linux package for amd64 and arm64
+all: (deb "amd64") (deb "arm64") (archlinux "amd64") (archlinux "arm64")
+
+# PKGBUILD and source tarball of HEAD in dist/aur/; run makepkg -si there on Arch
+aur:
+    mkdir -p dist/aur
+    git archive --format=tar.gz --prefix=wisp-{{version}}/ -o dist/aur/wisp-{{version}}.tar.gz HEAD
+    sed -e 's/^pkgver=.*/pkgver={{version}}/' \
+        -e "s/^sha256sums=.*/sha256sums=('$(sha256sum dist/aur/wisp-{{version}}.tar.gz | cut -d' ' -f1)')/" \
+        -e 's/^# Maintainer:.*/# Maintainer: {{maintainer}}/' \
+        packaging/arch/PKGBUILD > dist/aur/PKGBUILD
+    @echo "dist/aur: on Arch, cd there and run makepkg -si"
+
+# the Nix package, as ./result
+nix:
+    nix build .#default
+
+# remove dist/
+clean:
+    rm -rf dist

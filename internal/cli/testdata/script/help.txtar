@@ -4,3 +4,8 @@ env WISP_API_KEY=sk-secret-for-test
 exec wisp -h
 stderr 'api-key'
 ! stderr 'sk-secret-for-test'
+
+# Without a prompt and without a terminal for the UI, wisp says so.
+! exec wisp
+stderr 'no prompt given, and no terminal for the UI'
+stderr 'Without a prompt, wisp opens its terminal UI'

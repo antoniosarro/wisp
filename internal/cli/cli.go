@@ -1,5 +1,5 @@
 // Package cli is the wisp command: flags, setup, and running a turn for
-// the prompt given as arguments.
+// the prompt given as arguments, or the terminal UI without one.
 package cli
 
 import (
@@ -67,7 +67,7 @@ func run() error {
 	traceOnly := flag.Bool("trace-only", false, "serve the trace page for all sessions and nothing else; needs no model")
 	traceAddr := flag.String("trace-addr", "127.0.0.1:7777", "address for --trace and --trace-only (a free port if taken); keep it on localhost, the page shows whole sessions")
 	flag.Usage = func() {
-		_, _ = fmt.Fprint(flag.CommandLine.Output(), "usage: wisp [flags] prompt...\n\n")
+		_, _ = fmt.Fprint(flag.CommandLine.Output(), "usage: wisp [flags] [prompt...]\n\nWithout a prompt, wisp opens its terminal UI.\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -111,9 +111,9 @@ func run() error {
 		return printModels(ctx, provider, cfg.ModelName)
 	}
 	prompt := strings.Join(flag.Args(), " ")
-	if prompt == "" {
+	if prompt == "" && !terminalUI() {
 		flag.Usage()
-		return errors.New("no prompt given")
+		return errors.New("no prompt given, and no terminal for the UI")
 	}
 	if wd, err := os.Getwd(); err == nil {
 		cfg.TrustProject = trustProject(wd, cfg.TrustProject, os.Stdin, os.Stderr, interactiveTerminal())
@@ -131,6 +131,9 @@ func run() error {
 	rememberModel(cfg.BaseURL, info.ID)
 	if info.Tools == model.Unsupported {
 		fmt.Fprintf(os.Stderr, "wisp: the endpoint says %s cannot call tools; running it without tools\n", info.ID)
+	}
+	if prompt == "" {
+		return runTUI(ctx, cfg, provider, info)
 	}
 	return runSingleShot(ctx, cfg, provider, info, prompt)
 }

@@ -1,7 +1,9 @@
 # Using wisp
 
 Run wisp from the directory you want to work in. Without a prompt it opens
-the terminal UI; with one, it runs a single turn and exits.
+the terminal UI; with one, it runs a single turn and exits. With no prompt
+and no terminal on stdin and stdout, as in a pipe or a script, it exits with
+an error instead of starting a UI it can't draw.
 
 ```sh
 wisp                                 # the TUI

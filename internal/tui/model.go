@@ -1,0 +1,290 @@
+package tui
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/antoniosarro/wisp/internal/core"
+	"github.com/antoniosarro/wisp/internal/model"
+	"github.com/antoniosarro/wisp/internal/tool"
+)
+
+// Model is the Bubble Tea frontend: a transcript viewport, a prompt input,
+// and the state of the in-flight turn.
+type Model struct {
+	loop *core.Loop
+	ctx  context.Context
+	send func(tea.Msg)
+	msgs <-chan tea.Msg
+
+	viewport viewport.Model
+	input    textarea.Model
+	spin     spinner.Model
+
+	width, height int
+	ready         bool   // the viewport exists: a WindowSizeMsg has come
+	autoScroll    bool   // follow new output; off once the user scrolls up
+	notice        string // shown in the chat box's bottom border
+
+	entries transcript
+
+	inTurn     bool
+	turnCancel context.CancelFunc
+	turnDone   <-chan struct{} // closed when the latest turn's goroutine exits
+
+	dirty        bool // transcript changed since the last render
+	framePending bool // a frameMsg is scheduled
+	quitting     bool
+}
+
+const inputPlaceholder = "ask wisp..."
+
+// NewModel builds a Model around loop, replaying its History. msgs is the
+// receive side of the channel send writes to.
+func NewModel(ctx context.Context, loop *core.Loop, send func(tea.Msg), msgs <-chan tea.Msg) *Model {
+	ti := textarea.New()
+	ti.Placeholder = inputPlaceholder
+	ti.ShowLineNumbers = false
+	ti.Prompt = "> "
+	ti.MaxWidth = 0
+	ti.MaxHeight = 0
+	ti.SetHeight(1)
+	ti.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter", "ctrl+j"))
+	ti.FocusedStyle, ti.BlurredStyle = inputStyles()
+	ti.Focus()
+
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = styleSpinner
+
+	m := &Model{
+		loop:       loop,
+		ctx:        ctx,
+		send:       send,
+		msgs:       msgs,
+		input:      ti,
+		spin:       sp,
+		autoScroll: true,
+	}
+	m.replayHistory(loop.History)
+	return m
+}
+
+// replayHistory shows a resumed session's conversation: what the user
+// asked, the answers, and the calls made, all as finished.
+func (m *Model) replayHistory(history []model.Message) {
+	for _, msg := range history {
+		switch msg.Role {
+		case model.RoleUser:
+			m.entries.add(entryUser, msg.Content)
+		case model.RoleAssistant:
+			if strings.TrimSpace(msg.Content) != "" {
+				m.entries.add(entryAnswer, msg.Content)
+			}
+			for _, c := range msg.ToolCalls {
+				m.entries.apply(model.Event{Kind: model.EventToolCall, ToolCall: &c})
+			}
+		case model.RoleTool:
+			m.entries.resolve(ToolResultMsg{Call: model.ToolCall{ID: msg.ToolCallID}, Result: tool.Result{Content: msg.Content, IsError: msg.IsError}})
+		}
+	}
+	m.entries.settle(nil)
+}
+
+// Init starts the message pump, the spinner, and the cursor blink.
+func (m *Model) Init() tea.Cmd {
+	return tea.Batch(listenForMsg(m.msgs), m.spin.Tick, m.input.Focus())
+}
+
+// listenForMsg waits for the next message from the turn goroutine or
+// prompter; each handler re-issues it to keep the pump running.
+func listenForMsg(ch <-chan tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		return <-ch
+	}
+}
+
+// Update applies msg.
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width, m.height = msg.Width, msg.Height
+		m.applyLayout()
+		return m, nil
+	case tea.KeyMsg:
+		return m, m.handleKey(msg)
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spin, cmd = m.spin.Update(msg)
+		if m.inTurn { // running calls show the spinner
+			m.syncViewport()
+		}
+		return m, cmd
+	case frameMsg:
+		m.framePending = false
+		if m.dirty {
+			m.syncViewport()
+		}
+		return m, nil
+	case TurnDoneMsg:
+		m.finishTurn(msg.Err)
+		return m, tea.Batch(listenForMsg(m.msgs), m.input.Focus())
+	}
+	if m.handleTurnMsg(msg) {
+		return m, tea.Batch(listenForMsg(m.msgs), m.frame())
+	}
+	return m, m.updateInput(msg)
+}
+
+// handleTurnMsg applies a message from the pump other than TurnDoneMsg,
+// reporting whether msg was one.
+func (m *Model) handleTurnMsg(msg tea.Msg) bool {
+	switch msg := msg.(type) {
+	case StreamMsg:
+		m.entries.apply(model.Event(msg))
+	case ToolResultMsg:
+		m.entries.resolve(msg)
+	case CompactMsg:
+		m.applyCompaction(core.CompactEvent(msg))
+	case NoticeMsg:
+		m.entries.add(entryNotice, string(msg))
+	default:
+		return false
+	}
+	m.dirty = true
+	return true
+}
+
+// applyCompaction notes a compaction's start and end in the transcript.
+func (m *Model) applyCompaction(e core.CompactEvent) {
+	switch {
+	case !e.Done:
+		m.entries.add(entryNotice, "Compacting the conversation…")
+	case e.Err != nil:
+		m.entries.add(entryNotice, "Compacted without a summary: "+e.Err.Error())
+	default:
+		m.entries.add(entryNotice, "Compacted the conversation.")
+	}
+}
+
+// handleKey handles the keys of a plain chat: sending, cancelling,
+// quitting, and scrolling. The rest go to the input.
+func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "ctrl+c":
+		m.quitting = true
+		if m.inTurn {
+			m.turnCancel()
+		}
+		return tea.Quit
+	case "esc":
+		if m.inTurn {
+			m.turnCancel()
+		}
+		return nil
+	case "enter":
+		return m.submit()
+	case "pgup", "pgdown":
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		m.autoScroll = m.viewport.AtBottom()
+		return cmd
+	}
+	return m.updateInput(msg)
+}
+
+// updateInput forwards msg to the textarea, relaying out only when its
+// height may have changed.
+func (m *Model) updateInput(msg tea.Msg) tea.Cmd {
+	// The input re-wraps all its text on every key, so a huge paste would
+	// make typing crawl; a file serves it better.
+	if k, ok := msg.(tea.KeyMsg); ok && k.Paste && len(string(k.Runes)) > maxPasteBytes {
+		m.notice = fmt.Sprintf("Paste of %d KB not inserted: save it to a file and ask wisp to read it", len(string(k.Runes))/1024)
+		return nil
+	}
+	lines := m.input.LineCount()
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	if m.input.LineCount() != lines {
+		m.applyLayout()
+	}
+	return cmd
+}
+
+// submit starts a turn with the input, unless one is running.
+func (m *Model) submit() tea.Cmd {
+	input := strings.TrimSpace(m.input.Value())
+	if input == "" {
+		return nil
+	}
+	if m.inTurn {
+		m.notice = "Still working: your draft stays here; press Enter again once the turn ends (Esc cancels the turn)"
+		return nil
+	}
+
+	m.input.SetValue("")
+	m.notice = ""
+	m.inTurn = true
+	m.autoScroll = true
+	m.entries.add(entryUser, input)
+	m.applyLayout()
+
+	turnCtx, cancel := context.WithCancel(m.ctx)
+	m.turnCancel = cancel
+	m.turnDone = RunTurn(turnCtx, m.loop, input, m.send)
+	return nil
+}
+
+// Wait blocks until the latest turn's goroutine has exited, so its final
+// messages are stored before the caller closes the session store.
+func (m *Model) Wait() {
+	if m.turnDone == nil {
+		return
+	}
+	select {
+	case <-m.turnDone:
+	case <-time.After(turnDrainTimeout): // a stream deaf to cancellation; the process is exiting
+	}
+}
+
+// turnDrainTimeout bounds how long quitting waits for a cancelled turn to
+// record its results.
+const turnDrainTimeout = 5 * time.Second
+
+// maxPasteBytes is the largest paste the input takes.
+const maxPasteBytes = 100 << 10
+
+// frameInterval bounds how often streamed output re-renders the transcript.
+const frameInterval = 50 * time.Millisecond
+
+// frameMsg asks for a render of what changed since the last one.
+type frameMsg struct{}
+
+// frame schedules a render of pending transcript changes, coalescing the
+// many stream events that arrive within one frame.
+func (m *Model) frame() tea.Cmd {
+	if !m.dirty || m.framePending {
+		return nil
+	}
+	m.framePending = true
+	return tea.Tick(frameInterval, func(time.Time) tea.Msg { return frameMsg{} })
+}
+
+// finishTurn settles entries left open by the turn and reports its error.
+func (m *Model) finishTurn(err error) {
+	m.inTurn = false
+	if m.turnCancel != nil {
+		m.turnCancel()
+		m.turnCancel = nil
+	}
+	m.entries.settle(err)
+	m.syncViewport()
+}

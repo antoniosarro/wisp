@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/antoniosarro/wisp/internal/agent"
 	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
@@ -88,6 +90,27 @@ func (b *block) collapsible() bool {
 		return b.detail != ""
 	}
 	return false
+}
+
+// copyText is what Ctrl+Y copies of b: what was said or run, not its
+// frame. It is cleaned like what the screen shows: the clipboard ends up
+// pasted into terminals, where an escape sequence in a model's text could
+// end a bracketed paste and run what follows.
+func (b *block) copyText() string {
+	var text string
+	switch b.kind {
+	case blockReasoning:
+		text = b.reasoningText
+	case blockToolCall:
+		text = b.toolName + " " + string(b.toolArgs) + "\n" + b.toolResult
+	case blockCompaction:
+		text = b.text + "\n\n" + b.detail
+	case blockContext:
+		return ansi.Strip(renderContextBlock(*b.usage, 100)) // rendered, so already clean
+	default:
+		text = b.text
+	}
+	return sanitize(text)
 }
 
 // blockList is one conversation's transcript.
@@ -384,15 +407,39 @@ func (m *Model) selectedBlockOrLast() *block {
 // expandSelected opens the selected block: a sub-agent's conversation, or
 // the block's full content.
 func (m *Model) expandSelected() {
-	b := m.selectedBlockOrLast()
-	if b == nil {
+	if b := m.selectedBlockOrLast(); b != nil {
+		m.activate(m.selectedBlock)
+	}
+}
+
+// activate acts on shown block i as a click would.
+func (m *Model) activate(i int) {
+	if runID, ok := m.runOf(i); ok {
+		m.openRun(runID)
 		return
 	}
-	if run := m.agentRunFor(b.toolCallID); b.kind == blockToolCall && b.toolName == agent.ToolName && run != nil && m.runViews[run.RunID] != nil {
-		m.openRun(run.RunID)
-		return
+	if (*m.shown())[i].collapsible() {
+		m.toggleBlock(i)
 	}
-	if b.collapsible() {
-		m.toggleBlock(m.selectedBlock)
+}
+
+// interactive reports whether clicking shown block i does something.
+func (m *Model) interactive(i int) bool {
+	if _, ok := m.runOf(i); ok {
+		return true
 	}
+	return (*m.shown())[i].collapsible()
+}
+
+// runOf returns the sub-agent run shown block i started, if it is an agent
+// call whose conversation can be opened.
+func (m *Model) runOf(i int) (int64, bool) {
+	b := &(*m.shown())[i]
+	if b.kind != blockToolCall || b.toolName != agent.ToolName {
+		return 0, false
+	}
+	if run := m.agentRunFor(b.toolCallID); run != nil && m.runViews[run.RunID] != nil {
+		return run.RunID, true
+	}
+	return 0, false
 }

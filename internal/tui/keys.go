@@ -23,6 +23,7 @@ const (
 // blocks. The rest go to the input.
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	m.notice = ""
+	m.clearSelection()
 	k := msg.String()
 	now := time.Now()
 	typing := now.Sub(m.lastKey) < approvalGuard
@@ -92,6 +93,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		m.selectBlock(k == "alt+right")
 	case "ctrl+o":
 		m.expandSelected()
+	case "ctrl+y":
+		if b := m.selectedBlockOrLast(); b != nil {
+			return copyCmd(b.copyText(), "Copied selected block")
+		}
 	case "ctrl+r":
 		m.toggleLastReasoning()
 	case "pgup", "pgdown", "ctrl+u", "ctrl+d":
@@ -252,6 +257,25 @@ func (m *Model) decide(d permission.Decision, note string) {
 		m.answerPermission(req, d != permission.Deny)
 	}
 	m.applyLayout()
+}
+
+// clickApproval answers the front request as its key hint's key would.
+// The prompt must have been visible for approvalGuard, as for keys; a
+// click can't be stray typing, so the typing pause doesn't apply.
+func (m *Model) clickApproval(key string) {
+	if time.Since(m.pendingSince) < approvalGuard {
+		return
+	}
+	switch key {
+	case "esc":
+		if m.inTurn && m.turnCancel != nil {
+			m.cancelTurn()
+		}
+	case "t":
+		m.startNoting()
+	default:
+		m.decide(map[string]permission.Decision{"y": permission.Allow, "a": permission.AllowAlways, "n": permission.Deny}[key], "")
+	}
 }
 
 // startNoting sets the draft aside so the input can take a denial note.

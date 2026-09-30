@@ -31,7 +31,7 @@ func (m *Model) viewMain() { m.switchView(0) }
 // switchView shows run runID's conversation, or the main chat for 0.
 func (m *Model) switchView(runID int64) {
 	m.viewing = runID
-	m.selectedBlock = -1
+	m.selectedBlock, m.hoverBlock = -1, -1
 	m.autoScroll = true
 	m.applyLayout()
 }
@@ -77,4 +77,23 @@ func (m *Model) viewLabel() (left, right string) {
 		return m.runIcon(r) + " " + styleSpinner.Render(r.Agent) + styleDim.Render(" ▸ "+task), styleDim.Render("ctrl+b back")
 	}
 	return "", ""
+}
+
+// agentRunAt returns the run whose Agents panel entry is at screen row y.
+func (m *Model) agentRunAt(y int) (int64, bool) {
+	top, ok := m.sidePanelTop("agents")
+	if !ok {
+		return 0, false
+	}
+	// Entries start below the border, title and a blank line: 3 lines each, then a blank.
+	row := y - top - 3
+	if row < 0 || row%4 == 3 {
+		return 0, false
+	}
+	runs := m.panelRuns()
+	k := row / 4
+	if k >= len(runs) {
+		return 0, false
+	}
+	return runs[len(runs)-1-k].RunID, true // newest first
 }

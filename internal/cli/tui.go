@@ -58,7 +58,7 @@ func runTUI(ctx context.Context, cfg Config, provider *openaicompat.Client, info
 			return info
 		},
 	})
-	_, err = tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(tui.NewInput(os.Stdin)), tea.WithAltScreen()).Run()
+	_, err = tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(tui.NewInput(os.Stdin)), tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
 	cancel() // stop any in-flight turn, then let it record its results
 	m.Wait()
 	return err

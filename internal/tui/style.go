@@ -32,6 +32,8 @@ var (
 	styleReasoningBorder = lipgloss.NewStyle().Foreground(colorMuted)
 	styleSpinner         = lipgloss.NewStyle().Foreground(colorMagenta)
 	styleSelectedBar     = lipgloss.NewStyle().Foreground(colorMagenta)
+	styleHoverBar        = lipgloss.NewStyle().Foreground(colorViolet)
+	styleSelection       = lipgloss.NewStyle().Foreground(colorText).Background(colorViolet)
 
 	styleToolCard        = boxStyle(colorMuted)
 	styleToolCardRunning = boxStyle(colorLavender)

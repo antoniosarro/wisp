@@ -56,9 +56,9 @@ func (m *Model) sidePanels() []sidePanel {
 	return panels
 }
 
-// renderSideColumn stacks the panels. Each panel but the last takes its
-// content height, up to an equal share; the last fills what remains. A
-// panel shown at its natural height reuses the render that measured it.
+// renderSideColumn stacks the panels, using the same heights as
+// sideHeights but rendering each panel once: a panel shown at its natural
+// height reuses the render that measured it.
 func (m *Model) renderSideColumn(height int) string {
 	panels := m.sidePanels()
 	parts := make([]string, len(panels))
@@ -77,6 +77,37 @@ func (m *Model) renderSideColumn(height int) string {
 		left -= h
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// sideHeights splits height among the open panels. Each panel but the
+// last takes its content height, up to an equal share; the last fills what
+// remains.
+func (m *Model) sideHeights(height int) []int {
+	panels := m.sidePanels()
+	heights := make([]int, len(panels))
+	left := height
+	for i, p := range panels {
+		h := left
+		if i < len(panels)-1 {
+			h = min(lipgloss.Height(p.render(0)), height/len(panels))
+		}
+		heights[i] = h
+		left -= h
+	}
+	return heights
+}
+
+// sidePanelTop returns the screen row where the named panel starts, if open.
+func (m *Model) sidePanelTop(name string) (int, bool) {
+	heights := m.sideHeights(m.viewport.Height + 2)
+	top := 0
+	for i, p := range m.sidePanels() {
+		if p.name == name {
+			return top, true
+		}
+		top += heights[i]
+	}
+	return 0, false
 }
 
 // setTodos records the model's latest task list, opening the panel the

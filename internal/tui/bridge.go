@@ -17,6 +17,8 @@
 //   - suggest.go: a suggested next message after each reply (--suggest)
 //   - agents.go: sub-agent runs: the Agents panel and their tool cards
 //   - agentview.go: a sub-agent's own conversation, in place of the chat
+//   - mouse.go: hover, clicks, drag selection, and copying (OSC 52 as a
+//     fallback)
 //   - permission.go: Prompter, which asks for approval through the UI
 //   - approval.go: what an approval shows: the call, a diff for edits
 //   - blocks.go: the transcript as blocks, built from the stream and

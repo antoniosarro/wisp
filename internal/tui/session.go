@@ -151,7 +151,8 @@ func (m *Model) switchSession(store *session.Store, id string, history []model.M
 	m.todos, m.todoOpen = nil, false
 	m.agentRuns, m.agentsOpen = nil, false
 	m.runViews, m.viewing = map[int64]*blockList{}, 0
-	m.selectedBlock = -1
+	m.selectedBlock, m.hoverBlock = -1, -1
+	m.sel = textSelection{}
 	m.notice = ""
 	m.replayHistory(history)
 	m.autoScroll = true

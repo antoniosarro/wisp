@@ -53,6 +53,11 @@ type Model struct {
 	blocks        blockList
 	blockLines    []lineRange // each block's lines in the last render
 	selectedBlock int         // the block Ctrl+O acts on, or -1
+	hoverBlock    int         // under the mouse pointer, or -1
+	content       string      // the last rendered transcript
+	sel           textSelection
+	mouseX        int
+	mouseY        int
 
 	inputHistory []string  // submitted prompts, oldest first
 	historyIndex int       // the entry shown, len(inputHistory) for the draft
@@ -141,6 +146,7 @@ func NewModel(ctx context.Context, loop *core.Loop, send func(tea.Msg), msgs <-c
 		autoScroll:    true,
 		runViews:      map[int64]*blockList{},
 		selectedBlock: -1,
+		hoverBlock:    -1,
 	}
 	m.replayHistory(loop.History)
 	if opts.Model.ID == "" {
@@ -173,6 +179,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.handleKey(msg)
 		m.fitPopup()
 		return m, cmd
+	case tea.MouseMsg:
+		return m, m.handleMouse(msg)
+	case clipboardResultMsg:
+		if msg.err != nil { // kept in the chat: a border label is easy to miss
+			m.notify("Copy failed: " + msg.err.Error())
+			return m, nil
+		}
+		m.notice = msg.notice
+		return m, nil
 	case modelsMsg:
 		return m, m.handleModels(msg)
 	case modelInfoMsg:

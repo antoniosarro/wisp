@@ -80,7 +80,17 @@ func (m *Model) syncViewport() {
 		return
 	}
 	m.dirty = false
-	m.viewport.SetContent(m.render())
+	m.content = m.render()
+	m.refreshViewport()
+}
+
+// refreshViewport shows the last render, with any drag selection highlighted.
+func (m *Model) refreshViewport() {
+	content := m.content
+	if m.sel.visible() {
+		content = m.highlightSelection(content)
+	}
+	m.viewport.SetContent(content)
 	if m.autoScroll {
 		m.viewport.GotoBottom()
 	}
@@ -91,7 +101,8 @@ type lineRange struct{ start, end int }
 
 // render builds the transcript, padded toward the bottom of the viewport
 // so a short chat sits next to the input. Finished blocks come from their
-// cached render. It records each block's line range, to scroll to it.
+// cached render. It records each block's line range, to scroll to it and
+// to find the block under the mouse.
 func (m *Model) render() string {
 	w := m.chatWidth()
 	var chat strings.Builder
@@ -107,8 +118,11 @@ func (m *Model) render() string {
 			b.cachedWidth = w
 		}
 		part := b.cached
-		if i == m.selectedBlock {
+		switch i {
+		case m.selectedBlock:
 			part = markGutter(part, styleSelectedBar)
+		case m.hoverBlock:
+			part = markGutter(part, styleHoverBar)
 		}
 		if i > 0 {
 			chat.WriteString("\n\n") // one blank line between blocks
@@ -122,9 +136,12 @@ func (m *Model) render() string {
 	if len(shown) == 0 {
 		return ""
 	}
-	// The padding shifts the blocks down, but only when they all fit, when
-	// there is nothing to scroll to: blockLines leaves it out.
-	return strings.Repeat("\n", max(0, m.viewport.Height-lines)) + chat.String()
+	pad := max(0, m.viewport.Height-lines)
+	for i := range m.blockLines {
+		m.blockLines[i].start += pad
+		m.blockLines[i].end += pad
+	}
+	return strings.Repeat("\n", pad) + chat.String()
 }
 
 // markGutter draws a bar in the left margin of each line.

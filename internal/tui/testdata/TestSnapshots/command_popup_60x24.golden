@@ -1,0 +1,24 @@
+╭──────────────────────────────────────────────────────────╮
+│                                                          │
+│     ╭────────────────────────────────────────────────╮   │
+│     │ ✗ bash go vet ./... · 2 lines  loop.go:12:     │   │
+│     │ unreachable code                               │   │
+│     ╰────────────────────────────────────────────────╯   │
+│                                                          │
+│   ● The loop streams a response, runs the tools it       │
+│     asks for, and repeats.                               │
+│     ╭────────────────────────────────────────────────╮   │
+│     │ go                                             │   │
+│     │ for i := 0; i < maxIter; i++ {                 │   │
+│     │     step()                                     │   │
+│     │ }                                              │   │
+│     ╰────────────────────────────────────────────────╯   │
+│                                           -  wisp is idle│
+╰──────────────────────────────────────────────────────────╯
+ › /context           what fills the context window         
+   /compact [focus]   summarize the conversation to free co…
+   /clear             start a new session; this one stays s…
+   /back              return to the main chat               
+╭──────────────────────────────────────────────────────────╮
+│ > /c                                                     │
+╰──────────────────────────────────────────────────────────╯

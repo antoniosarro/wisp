@@ -1,0 +1,24 @@
+╭──────────────────────────────────╮                        
+│ Debug                            │                        
+│ ● fast-agent                     │                        
+│                                  │                        
+│ Tokens      last      session    │                        
+│ prompt      12000     30000      │                        
+│   system    ~900                 │                        
+│   history   ~11000               │                        
+│   tool defs ~1500                │                        
+│ cache hit   75%       66.7%      │                        
+│ completion  800       2000       │                        
+│   answer    ~700                 │                        
+│                                  │                        
+│ Context                          │                        
+│ window      32.8K                │                        
+│   fixed     2.6K                 │                        
+│   history   26.1K budget         │                        
+│ used        █████░░░░░░░░░ 36%   │                        
+│ mask at     15.6K                │                        
+│ summarize   at 22.2K             │        -  wisp is idle 
+│ estimates   ×1.08                │                        
+╭──────────────────────────────────────────────────────────╮
+│ > ask wisp...                                            │
+╰──────────────────────────────────────────────────────────╯

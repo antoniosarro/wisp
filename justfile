@@ -24,6 +24,14 @@ cover html="":
     @go tool cover -func=coverage.out | tail -1 | tr -s '\t' ' '
     {{ if html != "" { "go tool cover -html=coverage.out" } else { "" } }}
 
+# TUI screen snapshots; pass update=1 to regenerate them after an intended change
+snapshots update="":
+    go test ./internal/tui -run 'TestSnapshots|TestScreenFitsAnySize|TestLayoutsFillTheScreen' {{ if update != "" { "-update" } else { "" } }}
+
+# fuzz the TUI layout across terminal sizes and states
+fuzz time="30s":
+    go test ./internal/tui -run '^$' -fuzz FuzzScreenFits -fuzztime {{time}}
+
 # write a Conventional Commits message for the staged changes with the local model (scripts/commit-msg.sh), then review it in git's editor
 commit:
     @msg="$(scripts/commit-msg.sh)" && git commit --edit -m "$msg"

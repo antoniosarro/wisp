@@ -1,0 +1,24 @@
+╭──────────────────────────────────────────────────────────╮
+│   Commands: /help, /context, /compact [FOCUS], /clear,   │
+│   /model [NAME], /resume [SESSION], /sessions, /debug,   │
+│   /todo, /agents, /back                                  │
+│   Typing / lists the commands, and after /model or       │
+│   /resume their choices: ↑/↓ choose, Tab completes,      │
+│   Enter runs, Esc closes the list.                       │
+│   /model and /resume without an argument open a list     │
+│   to choose from: type to filter it.                     │
+│                                                          │
+│   Enter sends; Alt+Enter or Ctrl+J inserts a newline.    │
+│   Up/Down (or Alt+Up/Down) recall sent prompts and       │
+│   commands. You can draft while a turn runs.             │
+│   Esc or Ctrl+C cancels a running turn. When idle, Esc   │
+│   closes this view, leaves a sub-agent chat, or clears   │
+│   a selection; Ctrl+C clears the input, and twice        │
+│   exits.                                                 │
+│   PgUp/PgDown scroll; Ctrl+End follows the latest        │
+│   output.                                                │
+│                                           -  wisp is idle│
+╰─ esc to close · pgup/pgdown scroll ──────────────────────╯
+╭──────────────────────────────────────────────────────────╮
+│ > ask wisp...                                            │
+╰──────────────────────────────────────────────────────────╯

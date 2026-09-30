@@ -11,8 +11,11 @@ require (
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/charmbracelet/x/ansi v0.11.8
+	github.com/charmbracelet/x/exp/golden v0.0.0-20241011142426-46044092ad91
+	github.com/charmbracelet/x/exp/teatest v0.0.0-20260924144451-d676b019604b
 	github.com/creack/pty v1.1.24
 	github.com/google/jsonschema-go v0.4.3
+	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/rogpeppe/go-internal v1.16.0
 	github.com/tiktoken-go/tokenizer v0.8.1
@@ -25,6 +28,7 @@ require (
 )
 
 require (
+	github.com/aymanbagabas/go-udiff v0.3.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect

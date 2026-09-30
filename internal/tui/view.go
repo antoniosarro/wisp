@@ -62,7 +62,7 @@ func (m *Model) applyLayout() {
 	}
 	if m.overlayText != "" {
 		m.overlay.Width, m.overlay.Height = max(1, m.chatWidth()), vpHeight
-		m.overlay.SetContent(ansi.Hardwrap(renderNotice(m.overlayText, m.chatWidth()), m.chatWidth(), true))
+		m.overlay.SetContent(renderOverlayText(m.overlayText, m.chatWidth()))
 	}
 	m.syncViewport()
 }

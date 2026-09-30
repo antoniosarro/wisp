@@ -1,0 +1,24 @@
+╭──────────────────────────────────────────────────────────╮
+│                    F1 or /help for controls              │
+│ ──────────────────────────────────────────────────────   │
+│                                                          │
+│   ▌ clean up                                             │
+│                                                          │
+│     ╭────────────────────────────────────────────────╮   │
+│     │ ⣾  write docs/notes.md · 1.5s · esc to         │   │
+│     │ interrupt                                      │   │
+│     ╰────────────────────────────────────────────────╯   │
+│                                      · ?  wisp is waiting│
+╰──────────────────────────────────────────────────────────╯
+╭─ Permission required ────────────────────────────────────╮
+│ write wants to create docs/notes.md · 3 lines            │
+│                                                          │
+│ # Notes                                                  │
+│                                                          │
+│ The loop streams, dispatches tools, and repeats.         │
+│                                                          │
+│ in /home/user/project                                    │
+│                                                          │
+│ y allow   a always allow write in this directory   n de… │
+│ esc cancel turn   ↑↓ scroll                              │
+╰──────────────────────────────────────────────────────────╯

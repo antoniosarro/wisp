@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/antoniosarro/wisp/internal/agent"
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/testutil"
 )
@@ -40,8 +41,8 @@ func TestTodoPanelOpensOnFirstList(t *testing.T) {
 
 func TestSidePanelsArrangeForEveryCombination(t *testing.T) {
 	baseCorners := -1 // closed boxes in the chat-only layout (chat, input, logo art)
-	for combo := range 4 {
-		todo, debug := combo&1 != 0, combo&2 != 0
+	for combo := range 8 {
+		todo, agents, debug := combo&1 != 0, combo&2 != 0, combo&4 != 0
 		var want []string
 		m, _ := newTestModel(t, &testutil.ScriptedProvider{})
 		m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
@@ -49,13 +50,17 @@ func TestSidePanelsArrangeForEveryCombination(t *testing.T) {
 			m.setTodos(json.RawMessage(threeTodos))
 			want = append(want, "Tasks")
 		}
+		if agents {
+			m.Update(AgentMsg{RunID: 1, Agent: "explorer", Task: "find Loop", Status: agent.Running})
+			want = append(want, "Agents")
+		}
 		if debug {
 			want = append(want, "Debug")
 		}
 		m.debugOpen = debug
 		m.applyLayout()
 
-		name := fmt.Sprintf("todo=%v debug=%v", todo, debug)
+		name := fmt.Sprintf("todo=%v agents=%v debug=%v", todo, agents, debug)
 		view := m.View()
 		if lipgloss.Width(view) != 120 || lipgloss.Height(view) != 24 {
 			t.Errorf("%s: view is %dx%d, want 120x24", name, lipgloss.Width(view), lipgloss.Height(view))

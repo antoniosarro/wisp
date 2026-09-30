@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/antoniosarro/wisp/internal/agent"
 	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/testutil"
@@ -20,12 +21,13 @@ func TestCostAccumulatesPerRequestPrice(t *testing.T) {
 
 	m.opts.Model = model.Info{ID: "hosted, no price"}
 	m.Update(StatsMsg(usage))
+	m.agentRuns = []agent.Event{{PromptTokens: 1_000_000}} // no price for its model: no cost
 
-	c := m.cost
-	if c.Session < 0.3269 || c.Session > 0.3271 || c.Unpriced != 1 || c.LastPriced {
+	c := m.costSummary()
+	if c.Session < 0.3269 || c.Session > 0.3271 || c.Unpriced != 1 || c.LastPriced || c.Agents != 0 {
 		t.Fatalf("cost = %+v, want session 0.327 with one unpriced request", c)
 	}
-	out := stripANSI(renderDebugPanel(m.stats, m.opts, c, 0, sidePanelWidth))
+	out := stripANSI(renderDebugPanel(m.stats, m.opts, c, 0, 0, sidePanelWidth))
 	for _, want := range []string{"Cost (est.)", "spent       —         $0.327", "1 request(s) had no known price"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("panel missing %q:\n%s", want, out)
@@ -35,7 +37,7 @@ func TestCostAccumulatesPerRequestPrice(t *testing.T) {
 
 func TestCostExplainsLocalAndUnknown(t *testing.T) {
 	render := func(info model.Info) string {
-		return stripANSI(renderDebugPanel(core.StepStats{}, Options{Model: info}, costSummary{}, 0, sidePanelWidth))
+		return stripANSI(renderDebugPanel(core.StepStats{}, Options{Model: info}, costSummary{}, 0, 0, sidePanelWidth))
 	}
 	if out := render(model.Info{ID: "q", Local: true}); !strings.Contains(out, "local endpoint: no API cost") {
 		t.Errorf("local:\n%s", out)
@@ -43,8 +45,14 @@ func TestCostExplainsLocalAndUnknown(t *testing.T) {
 	if out := render(model.Info{ID: "q"}); !strings.Contains(out, "--price IN,OUT sets it ($/1M)") {
 		t.Errorf("unknown:\n%s", out)
 	}
-	if out := render(model.Info{ID: "q", Price: model.Pricing{Known: true, Input: 0.27, Output: 1.1}}); !strings.Contains(out, "$0.27 in · $1.10 out per 1M") {
-		t.Errorf("price:\n%s", out)
+	priced := model.Info{ID: "q", Price: model.Pricing{Known: true, Input: 0.27, Output: 1.1}}
+	m, _ := newTestModel(t, &testutil.ScriptedProvider{})
+	m.opts.Model = priced
+	// Priced by the run at its own model's list price, not the main model's.
+	m.agentRuns = []agent.Event{{PromptTokens: 1_000_000, CompletionTokens: 1_000_000, Cost: 1.37, CostEstimated: true}}
+	out := stripANSI(renderDebugPanel(core.StepStats{}, m.opts, m.costSummary(), 0, 0, sidePanelWidth))
+	if !strings.Contains(out, "agents                $1.37 *") || !strings.Contains(out, "$0.27 in · $1.10 out per 1M") {
+		t.Errorf("agents and price:\n%s", out)
 	}
 }
 
@@ -59,12 +67,13 @@ func TestCostPrefersBilledCost(t *testing.T) {
 	m.Update(StatsMsg(billed))
 	billed.Cost, billed.Provider = 0.05, "Together" // the provider changed
 	m.Update(StatsMsg(billed))
+	m.agentRuns = []agent.Event{{PromptTokens: 1_000_000, Cost: 0.1}}
 
-	c := m.cost
-	if c.Session < 0.0699 || c.Session > 0.0701 || c.Last != 0.05 || c.Billed != 2 {
-		t.Fatalf("cost = %+v, want the billed 0.02 + 0.05", c)
+	c := m.costSummary()
+	if c.Session < 0.0699 || c.Session > 0.0701 || c.Last != 0.05 || c.Agents != 0.1 || c.AgentsEst || c.Billed != 2 {
+		t.Fatalf("cost = %+v, want the billed 0.02 + 0.05, agents 0.1", c)
 	}
-	out := stripANSI(renderDebugPanel(m.stats, m.opts, c, 0, sidePanelWidth))
+	out := stripANSI(renderDebugPanel(m.stats, m.opts, c, 0, 0, sidePanelWidth))
 	for _, want := range []string{"via Together", "Cost (billed)", "spent       $0.050    $0.070"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("panel missing %q:\n%s", want, out)
@@ -75,7 +84,7 @@ func TestCostPrefersBilledCost(t *testing.T) {
 	}
 
 	m.Update(StatsMsg(usage)) // an unbilled request falls back to list price: 0.3 + 0.15
-	if c := m.cost; c.Session < 0.5199 || c.Session > 0.5201 || c.Estimated != 1 {
+	if c := m.costSummary(); c.Session < 0.5199 || c.Session > 0.5201 || c.Estimated != 1 {
 		t.Fatalf("after unbilled request cost = %+v, want 0.52 with one estimate", c)
 	}
 }

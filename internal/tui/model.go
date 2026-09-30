@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/antoniosarro/wisp/internal/agent"
 	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/permission"
@@ -78,6 +79,11 @@ type Model struct {
 	todos     []core.Todo // the model's latest task list
 	todoOpen  bool
 
+	agentsOpen bool
+	agentRuns  []agent.Event
+	runViews   map[int64]*blockList // each sub-agent run's conversation
+	viewing    int64                // run on screen, 0 for the main chat
+
 	suggestion    string // proposed next message, accepted with →
 	suggestGen    int    // identifies the latest suggestion request
 	suggestCancel context.CancelFunc
@@ -133,6 +139,7 @@ func NewModel(ctx context.Context, loop *core.Loop, send func(tea.Msg), msgs <-c
 		input:         ti,
 		spin:          sp,
 		autoScroll:    true,
+		runViews:      map[int64]*blockList{},
 		selectedBlock: -1,
 	}
 	m.replayHistory(loop.History)
@@ -229,6 +236,10 @@ func (m *Model) handleTurnMsg(msg tea.Msg) bool {
 		if m.debugOpen { // stats show nowhere else
 			m.refreshDebug()
 		}
+	case AgentMsg:
+		m.updateAgentRun(agent.Event(msg))
+	case AgentTraceMsg:
+		m.applyTrace(agent.Trace(msg))
 	case PermissionRequestMsg:
 		if msg.Context != nil && msg.Context.Err() != nil {
 			return true
@@ -273,6 +284,9 @@ func (m *Model) submit() tea.Cmd {
 	}
 	m.clearSuggestion()
 	m.closeOverlay()
+	if m.viewing != 0 { // show where the message goes
+		m.viewMain()
+	}
 	if strings.HasPrefix(input, "/") {
 		m.input.SetValue("")
 		m.recordHistory(input)

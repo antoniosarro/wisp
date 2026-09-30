@@ -45,9 +45,12 @@ func (m *Model) sidePanels() []sidePanel {
 	if m.todoBeside() {
 		panels = append(panels, sidePanel{"tasks", m.todoPanel})
 	}
+	if m.agentsBeside() {
+		panels = append(panels, sidePanel{"agents", m.agentsPanel})
+	}
 	if m.debugBeside() {
 		panels = append(panels, sidePanel{"debug", func(h int) string {
-			return renderDebugPanel(m.stats, m.opts, m.cost, h, sidePanelWidth)
+			return renderDebugPanel(m.stats, m.opts, m.costSummary(), m.agentTokens(), h, sidePanelWidth)
 		}})
 	}
 	return panels

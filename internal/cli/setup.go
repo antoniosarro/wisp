@@ -61,9 +61,10 @@ func newProvider(cfg Config) *openaicompat.Client {
 // resumes, from its latest summary. vision is the image switch of the
 // read tool and MCP results, which applyModel sets from info. With
 // cfg.SkipPermissions, calls run without asking prompter, except
-// destructive MCP tools. onAgent receives sub-agent progress. The caller
+// destructive MCP tools. onAgent receives sub-agent progress, and onTrace,
+// if set, every step of their conversations. The caller
 // must call cleanup, which closes the store and stops MCP servers.
-func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision *atomic.Bool, prompter permission.Prompter, onAgent func(agent.Event)) (loop *core.Loop, cleanup func(), err error) {
+func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision *atomic.Bool, prompter permission.Prompter, onAgent func(agent.Event), onTrace func(agent.Trace)) (loop *core.Loop, cleanup func(), err error) {
 	ask := prompter // still asked for destructive MCP tools when skipping permissions
 	if cfg.SkipPermissions {
 		prompter = permission.AllowAll{}
@@ -95,7 +96,7 @@ func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision 
 		}
 		return model.Info{ContextWindow: loop.ContextWindow, MaxOutput: loop.MaxOutput, Price: loop.Price, Tools: toolSupport(loop)}
 	}
-	agentTool, err := newAgentTool(cfg, provider, mainInfo, workDir, tools, mcpServers, onAgent)
+	agentTool, err := newAgentTool(cfg, provider, mainInfo, workDir, tools, mcpServers, onAgent, onTrace)
 	if err != nil {
 		mcpServers.Close()
 		return nil, nil, err
@@ -211,7 +212,7 @@ type ownModel struct {
 // project's agents can't choose an endpoint or key, and main's key goes
 // only to main's host. MCP tools, if any, are among tools and share main's
 // servers.
-func newAgentTool(cfg Config, main *openaicompat.Client, mainInfo func() model.Info, workDir string, tools []tool.Tool, mcpServers *mcp.Manager, onAgent func(agent.Event)) (*agent.Tool, error) {
+func newAgentTool(cfg Config, main *openaicompat.Client, mainInfo func() model.Info, workDir string, tools []tool.Tool, mcpServers *mcp.Manager, onAgent func(agent.Event), onTrace func(agent.Trace)) (*agent.Tool, error) {
 	dirs := []string{projectPath(workDir, "agents")}
 	if global := configPath("agents"); global != "" {
 		dirs = append([]string{global}, dirs...)
@@ -271,5 +272,6 @@ func newAgentTool(cfg Config, main *openaicompat.Client, mainInfo func() model.I
 		},
 		MaxParallel: cfg.MaxAgents,
 		Observer:    onAgent,
+		Trace:       onTrace,
 	})
 }

@@ -141,9 +141,14 @@ func toolHeader(icon, name string, args json.RawMessage) string {
 	return header
 }
 
-// renderToolRunning draws an in-flight call.
-func renderToolRunning(spinnerView, name string, args json.RawMessage, elapsed time.Duration, width int) string {
-	meta := " · " + formatDuration(elapsed) + " · esc to interrupt"
+// renderToolRunning draws an in-flight call; activity describes a
+// sub-agent's current step.
+func renderToolRunning(spinnerView, name string, args json.RawMessage, activity string, elapsed time.Duration, width int) string {
+	meta := " · " + formatDuration(elapsed)
+	if activity != "" {
+		meta += " · " + activity
+	}
+	meta += " · esc to interrupt"
 	return boxed(styleToolCardRunning, width, toolHeader(spinnerView, name, args)+styleDim.Render(meta))
 }
 

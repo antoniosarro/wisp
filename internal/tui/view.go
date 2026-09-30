@@ -7,6 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/antoniosarro/wisp/internal/agent"
 )
 
 // applyLayout recomputes component sizes from the terminal size and
@@ -61,7 +63,7 @@ type approvalKey struct {
 
 // refreshDebug re-renders the debug panel's full-screen view.
 func (m *Model) refreshDebug() {
-	m.debug.SetContent(renderDebugPanel(m.stats, m.opts, m.cost, 0, min(sidePanelWidth, m.debug.Width)))
+	m.debug.SetContent(renderDebugPanel(m.stats, m.opts, m.costSummary(), m.agentTokens(), 0, min(sidePanelWidth, m.debug.Width)))
 }
 
 // chatWidth is the transcript's content width inside the chat box.
@@ -95,10 +97,11 @@ func (m *Model) render() string {
 	var chat strings.Builder
 	lines := 0
 	m.blockLines = m.blockLines[:0]
-	for i := range m.blocks {
-		b := &m.blocks[i]
+	shown := *m.shown()
+	for i := range shown {
+		b := &shown[i]
 		if b.cached == "" || b.cachedWidth != w || b.active() {
-			live := m.inTurn && i == len(m.blocks)-1
+			live := m.inTurn && i == len(shown)-1
 			// Hardwrap as well: a word longer than the line would overflow the box.
 			b.cached = ansi.Hardwrap(m.renderBlock(b, w, live), w, true)
 			b.cachedWidth = w
@@ -116,7 +119,7 @@ func (m *Model) render() string {
 		chat.WriteString(part)
 		lines += n
 	}
-	if len(m.blocks) == 0 {
+	if len(shown) == 0 {
 		return ""
 	}
 	// The padding shifts the blocks down, but only when they all fit, when
@@ -187,7 +190,11 @@ func (m *Model) renderToolCallBlock(b *block, w int) string {
 	var card string
 	switch b.toolStatus {
 	case toolRunning:
-		card = renderToolRunning(m.spin.View(), b.toolName, b.toolArgs, elapsedSince(b.toolStart), w)
+		activity := ""
+		if run := m.agentRunFor(b.toolCallID); b.toolName == agent.ToolName && run != nil {
+			activity = runActivity(*run)
+		}
+		card = renderToolRunning(m.spin.View(), b.toolName, b.toolArgs, activity, elapsedSince(b.toolStart), w)
 	case toolDenied:
 		card = renderToolDenied(b.toolName, b.toolArgs, w)
 	default:
@@ -254,13 +261,18 @@ func (m *Model) footer() string {
 }
 
 // chatBox frames the transcript, or the overlay over it, with any notice
-// in its bottom border.
+// in its bottom border and, in a sub-agent's conversation, its name in the
+// top border.
 func (m *Model) chatBox(width int) string {
 	if m.overlayText != "" {
 		box := styleChatBox.Width(width).Render(m.overlay.View())
 		return withBorderLabel(box, cmp.Or(m.notice, "esc to close · pgup/pgdown scroll"))
 	}
 	box := styleChatBox.Width(width).Render(m.viewport.View())
+	if m.viewing != 0 {
+		left, right := m.viewLabel()
+		box = withTopLabel(box, left, right, styleApprovalBorder)
+	}
 	label := m.notice
 	switch {
 	case label != "":

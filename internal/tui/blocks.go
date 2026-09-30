@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/antoniosarro/wisp/internal/agent"
 	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/permission"
@@ -316,23 +317,25 @@ func (m *Model) answerPermission(req PermissionRequestMsg, allow bool) {
 	}
 }
 
-// toggleLastReasoning expands or collapses the latest reasoning.
+// toggleLastReasoning expands or collapses the latest reasoning shown.
 func (m *Model) toggleLastReasoning() {
-	for i := len(m.blocks) - 1; i >= 0; i-- {
-		if m.blocks[i].kind == blockReasoning {
+	shown := *m.shown()
+	for i := len(shown) - 1; i >= 0; i-- {
+		if shown[i].kind == blockReasoning {
 			m.toggleBlock(i)
 			return
 		}
 	}
 }
 
-// toggleBlock expands or collapses block i. Toggling the last block while
+// toggleBlock expands or collapses shown block i. Toggling the last block while
 // following the output keeps following it; any other block stays in place.
 func (m *Model) toggleBlock(i int) {
-	b := &m.blocks[i]
+	shown := *m.shown()
+	b := &shown[i]
 	b.expanded = !b.expanded
 	b.invalidate()
-	if i == len(m.blocks)-1 && (m.autoScroll || m.viewport.AtBottom()) {
+	if i == len(shown)-1 && (m.autoScroll || m.viewport.AtBottom()) {
 		m.autoScroll = true
 		m.syncViewport()
 		return
@@ -345,7 +348,7 @@ func (m *Model) toggleBlock(i int) {
 // selectBlock moves the selection to the next or previous block, starting
 // from the last, and scrolls it into view.
 func (m *Model) selectBlock(next bool) {
-	n := len(m.blocks)
+	n := len(*m.shown())
 	if n == 0 {
 		return
 	}
@@ -375,12 +378,21 @@ func (m *Model) selectedBlockOrLast() *block {
 	if m.selectedBlock < 0 {
 		return nil
 	}
-	return &m.blocks[m.selectedBlock]
+	return &(*m.shown())[m.selectedBlock]
 }
 
-// expandSelected opens or closes the selected block's full content.
+// expandSelected opens the selected block: a sub-agent's conversation, or
+// the block's full content.
 func (m *Model) expandSelected() {
-	if b := m.selectedBlockOrLast(); b != nil && b.collapsible() {
+	b := m.selectedBlockOrLast()
+	if b == nil {
+		return
+	}
+	if run := m.agentRunFor(b.toolCallID); b.kind == blockToolCall && b.toolName == agent.ToolName && run != nil && m.runViews[run.RunID] != nil {
+		m.openRun(run.RunID)
+		return
+	}
+	if b.collapsible() {
 		m.toggleBlock(m.selectedBlock)
 	}
 }

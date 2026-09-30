@@ -34,10 +34,9 @@ func runTUI(ctx context.Context, cfg Config, provider *openaicompat.Client, info
 		}
 	}
 
-	// Sub-agents' progress shows in a later version of the UI; printing it
-	// would draw over this one.
 	vision := new(atomic.Bool)
-	loop, cleanup, err := newLoop(cfg, provider, info, vision, tui.NewPrompter(send, done), func(agent.Event) {})
+	loop, cleanup, err := newLoop(cfg, provider, info, vision, tui.NewPrompter(send, done),
+		func(e agent.Event) { send(tui.AgentMsg(e)) }, func(t agent.Trace) { send(tui.AgentTraceMsg(t)) })
 	if err != nil {
 		return err
 	}

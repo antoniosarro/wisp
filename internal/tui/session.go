@@ -149,6 +149,8 @@ func (m *Model) switchSession(store *session.Store, id string, history []model.M
 	m.inputHistory, m.historyIndex, m.draft = nil, 0, ""
 	m.stats, m.cost = core.StepStats{}, costSummary{}
 	m.todos, m.todoOpen = nil, false
+	m.agentRuns, m.agentsOpen = nil, false
+	m.runViews, m.viewing = map[int64]*blockList{}, 0
 	m.selectedBlock = -1
 	m.notice = ""
 	m.replayHistory(history)

@@ -15,6 +15,8 @@
 //   - context.go: /context, the window drawn as a grid by category
 //   - compact.go: /compact, and compactions shown in the transcript
 //   - suggest.go: a suggested next message after each reply (--suggest)
+//   - agents.go: sub-agent runs: the Agents panel and their tool cards
+//   - agentview.go: a sub-agent's own conversation, in place of the chat
 //   - permission.go: Prompter, which asks for approval through the UI
 //   - approval.go: what an approval shows: the call, a diff for edits
 //   - blocks.go: the transcript as blocks, built from the stream and

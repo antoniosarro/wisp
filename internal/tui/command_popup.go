@@ -23,6 +23,8 @@ var commands = []command{
 	{"sessions", "", "list saved sessions to resume"},
 	{"debug", "", "show or hide the debug panel"},
 	{"todo", "", "show or hide the task panel"},
+	{"agents", "", "show or hide the sub-agent panel"},
+	{"back", "", "return to the main chat"},
 }
 
 // suggestion is one row of the popup: a command, or an argument for one.

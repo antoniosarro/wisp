@@ -16,7 +16,7 @@ const debugBarWidth = 14
 
 // renderDebugPanel shows provider-reported token usage with an estimated
 // breakdown by content type, cost, and timing. height <= 0 means unbounded.
-func renderDebugPanel(s core.StepStats, opts Options, cost costSummary, height, width int) string {
+func renderDebugPanel(s core.StepStats, opts Options, cost costSummary, agentTokens, height, width int) string {
 	inner := max(10, width-4) // border + padding
 	var b strings.Builder
 	dim := func(v any) string { return styleDim.Render(fmt.Sprint(v)) }
@@ -64,6 +64,9 @@ func renderDebugPanel(s core.StepStats, opts Options, cost costSummary, height, 
 		promptParts()
 		completionParts()
 	}
+	if agentTokens > 0 {
+		row("agents", "", agentTokens)
+	}
 	fmt.Fprintln(&b)
 	writeContext(&b, s.Context, dim)
 
@@ -88,7 +91,9 @@ type costSummary struct {
 	Estimated  int    // requests costed at a list price
 	Provider   string // who served the latest request, when reported
 	Session    float64
-	Unpriced   int // requests with usage but no known cost
+	Agents     float64 // sub-agents
+	AgentsEst  bool    // some agent spend is at their model's list price, not billed
+	Unpriced   int     // requests with usage but no known cost
 }
 
 // add costs one request's usage.
@@ -114,23 +119,35 @@ func (c *costSummary) add(s core.StepStats, info model.Info) {
 	c.Session += c.Last
 }
 
+// costSummary adds the sub-agents' spend to the main chat's. Each run
+// prices its own requests: what its endpoint billed, else its own model's
+// list price with cached tokens at the cached rate.
+func (m *Model) costSummary() costSummary {
+	c := m.cost
+	for _, r := range m.agentRuns {
+		c.Agents += r.Cost
+		c.AgentsEst = c.AgentsEst || r.CostEstimated
+	}
+	return c
+}
+
 // writeCost renders the cost section: spend so far and where the figures
 // come from, or why there are none.
 func writeCost(b *strings.Builder, info model.Info, c costSummary, inner int, row func(label string, last, session any)) {
 	note := func(s string) { fmt.Fprintln(b, styleDim.Render(ansi.Wrap(s, inner, " "))) }
 	head := "Cost"
 	switch {
-	case c.Billed > 0 && c.Estimated == 0:
+	case c.Billed > 0 && c.Estimated == 0 && !c.AgentsEst:
 		head += " (billed)"
 	case c.Billed == 0:
 		head += " (est.)"
 	}
 	fmt.Fprintln(b, styleSplashHead.Render(head))
 	switch {
-	case !info.Price.Known && c.Session == 0 && info.Local:
+	case !info.Price.Known && c.Session == 0 && c.Agents == 0 && info.Local:
 		note("local endpoint: no API cost")
 		return
-	case !info.Price.Known && c.Session == 0 && c.Billed == 0:
+	case !info.Price.Known && c.Session == 0 && c.Agents == 0 && c.Billed == 0:
 		note("price unknown")
 		note("--price IN,OUT sets it ($/1M)")
 		return
@@ -140,11 +157,21 @@ func writeCost(b *strings.Builder, info model.Info, c costSummary, inner int, ro
 		last = usd(c.Last)
 	}
 	row("spent", last, usd(c.Session))
+	if c.Agents > 0 {
+		agents := usd(c.Agents)
+		if c.AgentsEst {
+			agents += " *"
+		}
+		row("agents", "", agents)
+	}
 	if c.Billed > 0 && c.Estimated > 0 {
 		note(fmt.Sprintf("%d billed, %d at list price", c.Billed, c.Estimated))
 	}
-	if info.Price.Known && (c.Estimated > 0 || c.Billed == 0) {
+	if info.Price.Known && (c.Estimated > 0 || c.AgentsEst || c.Billed == 0) {
 		note(info.Price.String())
+	}
+	if c.AgentsEst {
+		note("* list price, as if uncached")
 	}
 	if c.Unpriced > 0 {
 		note(fmt.Sprintf("%d request(s) had no known price", c.Unpriced))

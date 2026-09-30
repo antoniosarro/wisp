@@ -70,6 +70,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return m.submit()
 	case "f1":
 		m.showHelp()
+	case "ctrl+b":
+		m.viewMain()
 	case "ctrl+end":
 		m.autoScroll = true
 		m.viewport.GotoBottom()
@@ -122,6 +124,8 @@ func (m *Model) interrupt(now time.Time) tea.Cmd {
 // back undoes the innermost view state on Esc; it never exits.
 func (m *Model) back() {
 	switch {
+	case m.viewing != 0:
+		m.viewMain()
 	case m.selectedBlock >= 0:
 		m.selectedBlock = -1
 		m.syncViewport()

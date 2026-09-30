@@ -6,16 +6,17 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const helpText = `Commands: /help, /context, /compact [FOCUS], /clear, /model [NAME], /resume [SESSION], /sessions, /debug, /todo
+const helpText = `Commands: /help, /context, /compact [FOCUS], /clear, /model [NAME], /resume [SESSION], /sessions, /debug, /todo, /agents, /back
 Typing / lists the commands, and after /model or /resume their choices: ↑/↓ choose, Tab completes, Enter runs, Esc closes the list.
 /model and /resume without an argument open a list to choose from: type to filter it.
 
 Enter sends; Alt+Enter or Ctrl+J inserts a newline.
 Up/Down (or Alt+Up/Down) recall sent prompts and commands. You can draft while a turn runs.
-Esc or Ctrl+C cancels a running turn. When idle, Esc closes this view or clears
-a selection; Ctrl+C clears the input, and twice exits.
+Esc or Ctrl+C cancels a running turn. When idle, Esc closes this view, leaves a
+sub-agent chat, or clears a selection; Ctrl+C clears the input, and twice exits.
 PgUp/PgDown scroll; Ctrl+End follows the latest output.
-Alt+Left/Right selects transcript blocks; Ctrl+O expands/collapses.
+Alt+Left/Right selects transcript blocks; Ctrl+O expands/collapses, or opens a
+sub-agent's own chat from its box.
 Ctrl+R toggles the latest reasoning block.
 Approvals: y allows, a always allows matching calls this session, n denies,
 t denies with a note telling wisp what to do instead, Esc cancels the turn.
@@ -26,6 +27,8 @@ Arrows/PgUp/PgDown scroll details. Keys typed while you were typing go to your d
 /compact summarizes the conversation so far to free context, keeping recent messages
 verbatim; any text after it says what the summary should keep in detail. wisp also
 compacts on its own when the context fills up.
+/agents shows or hides the sub-agent panel, which opens when the first sub-agent starts.
+Ctrl+B or /back returns to the main chat from a sub-agent's.
 Side panels stack on the right; on narrow terminals the tasks stay in the chat and /debug replaces the transcript.
 Start wisp with --suggest to get a suggested next message after each reply (→ accepts it).
 Set WISP_THEME=light for a light terminal palette.`
@@ -49,6 +52,10 @@ func (m *Model) runCommand(input string) (cmd tea.Cmd, ok bool) {
 		m.toggleDebug()
 	case "todo":
 		m.toggleTodo()
+	case "agents":
+		m.toggleAgents()
+	case "back", "main":
+		m.viewMain()
 	case "help":
 		m.showHelp()
 	case "sessions":

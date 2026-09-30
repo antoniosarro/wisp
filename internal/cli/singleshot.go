@@ -26,7 +26,7 @@ const (
 // runSingleShot runs one turn, streaming to stdout and prompting on stdin
 // for risky tool calls, then reports the session's usage on stderr.
 func runSingleShot(ctx context.Context, cfg Config, provider *openaicompat.Client, info model.Info, prompt string) error {
-	loop, cleanup, err := newLoop(cfg, provider, info, new(atomic.Bool), permission.TerminalPrompter{}, printAgentEvent)
+	loop, cleanup, err := newLoop(cfg, provider, info, new(atomic.Bool), permission.TerminalPrompter{}, printAgentEvent, nil)
 	if err != nil {
 		return err
 	}

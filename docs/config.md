@@ -61,7 +61,7 @@ from the `/models` listing and from local servers' native endpoints
 | `--cheapest` | | OpenRouter: route to the two cheapest zero-retention providers |
 | `--resume ID` | | Continue a session ([session.md](session.md)) |
 | `--sessions` | | List this directory's recent sessions and exit |
-| `--suggest` | | Suggest a next message after each reply (one extra request) |
+| `--suggest` | | Suggest a next message after each reply (one extra request, two for some reasoning models) |
 | `--max-iterations N` | 100 | Model round trips per turn before wrapping up |
 | `--max-agents N` | 1 | Sub-agents running at once ([subagents.md](subagents.md)) |
 | `--no-summarize` | | Only mask old tool output; never summarize ([compaction.md](compaction.md)) |
@@ -122,6 +122,12 @@ requests cost:
 
 Sub-agents without a billed cost are priced at their model's rate;
 `--suggest` requests aren't counted.
+
+A suggestion asks the model not to reason (`chat_template_kwargs` on
+llama.cpp-style servers, `reasoning.enabled` on OpenRouter), with room for
+the message only. If the endpoint rejects that, or the model reasons
+anyway without answering, wisp asks once more with reasoning allowed, up
+to about a thousand tokens.
 
 ## OpenRouter
 

@@ -11,10 +11,10 @@ import (
 // panel, with softer tones for text, borders, and status.
 var (
 	lightTheme    = os.Getenv("WISP_THEME") == "light"
-	colorMagenta  = themeColor("#D741F5", "#9B1FB5")
+	colorMagenta  = themeColor(hexColor(logoGradientFrom), "#9B1FB5")
 	colorViolet   = themeColor("#6252F0", "#4B3BD0")
 	colorLavender = themeColor("#A29BF5", "#5B4FC4")
-	colorCyan     = themeColor("#50DCEB", "#0B7E8C")
+	colorCyan     = themeColor(hexColor(logoGradientTo), "#0B7E8C")
 	colorMint     = themeColor("#5EE6B0", "#12825A")
 	colorRose     = themeColor("#FF5C8A", "#C0204F")
 	colorAmber    = themeColor("#FFB86C", "#A85A00")
@@ -67,6 +67,7 @@ var (
 	styleError      = lipgloss.NewStyle().Bold(true).Foreground(colorRose)
 	styleBorderLine = lipgloss.NewStyle().Foreground(colorMuted)
 	styleSplashHead = lipgloss.NewStyle().Bold(true).Foreground(colorMagenta)
+	styleRule       = lipgloss.NewStyle().Foreground(colorMuted)
 	styleDim        = lipgloss.NewStyle().Foreground(colorDim)
 	styleChatMargin = lipgloss.NewStyle().PaddingLeft(chatMarginLeft)
 )

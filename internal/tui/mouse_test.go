@@ -54,7 +54,7 @@ func TestDragSelectsAndStripsCardBorders(t *testing.T) {
 
 func TestClickTogglesEarlierBoxInPlace(t *testing.T) {
 	m, _ := newTestModel(t, &testutil.ScriptedProvider{})
-	m.Update(tea.WindowSizeMsg{Width: 100, Height: 12}) // short enough to scroll
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
 	long := strings.Repeat("r\n", 12)
 	m.blocks = []block{
 		{kind: blockReasoning, reasoningText: "first thought", reasoningDone: true},

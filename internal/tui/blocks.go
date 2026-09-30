@@ -310,6 +310,14 @@ func (l blockList) orphan() {
 	}
 }
 
+// appendStream folds a main-agent event into the main chat.
+func (m *Model) appendStream(e StreamMsg) {
+	m.blocks.appendEvent(model.Event(e))
+	if c := e.ToolCall; e.Kind == model.EventToolCall && c != nil && c.Name == "todo" {
+		m.setTodos(c.Args)
+	}
+}
+
 // toolCallBlock is a running call's block.
 func toolCallBlock(call model.ToolCall) block {
 	return block{kind: blockToolCall, toolCallID: call.ID, toolName: call.Name, toolArgs: call.Args}

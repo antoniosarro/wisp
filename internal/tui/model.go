@@ -22,8 +22,13 @@ import (
 type Options struct {
 	Model   model.Info   // the current model; empty ID until one is chosen
 	Models  []model.Info // the endpoint's models, offered when Model is empty
-	WorkDir string       // where file tools act, shown on approvals
-	Suggest bool         // ask for a suggested next message after each reply
+	BaseURL string
+	WorkDir string // where file tools act, shown on approvals and the splash
+	Suggest bool   // ask for a suggested next message after each reply
+	// TraceURL, when --trace serves the trace page, is shown on the splash.
+	TraceURL string
+	// Update, when a newer release exists, is its version, shown on the splash.
+	Update string
 	// OnModel, if set, configures loop for a newly described model and
 	// returns the details to show (with any overrides applied).
 	OnModel func(loop *core.Loop, info model.Info) model.Info
@@ -46,9 +51,11 @@ type Model struct {
 	debug    viewport.Model // the debug panel, full screen on a narrow terminal
 
 	width, height int
-	ready         bool   // the viewport exists: a WindowSizeMsg has come
-	autoScroll    bool   // follow new output; off once the user scrolls up
-	notice        string // shown in the chat box's bottom border
+	splash        string    // the rendered splash, for splashKey
+	splashKey     splashKey // what splash shows
+	ready         bool      // the viewport exists: a WindowSizeMsg has come
+	autoScroll    bool      // follow new output; off once the user scrolls up
+	notice        string    // shown in the chat box's bottom border
 
 	blocks        blockList
 	blockLines    []lineRange // each block's lines in the last render
@@ -83,6 +90,24 @@ type Model struct {
 	debugOpen bool
 	todos     []core.Todo // the model's latest task list
 	todoOpen  bool
+
+	// The mascot animates on the spinner tick. mascot is the state shown
+	// since tick mascotSince; mascotWant is the state wanted for the last
+	// mascotWantTicks ticks (see stepMascot). turnEndTick and
+	// keyTick are the ticks of the last turn's end and the last key press;
+	// egg plays until tick eggUntil.
+	mascotTick      int
+	mascot          mascotState
+	mascotSince     int
+	mascotWant      mascotState
+	mascotWantTicks int
+	turnEndTick     int
+	keyTick         int
+	egg             mascotState
+	eggUntil        int
+	// mascotPad is the blank rows applyLayout keeps below the transcript
+	// for the text mascot (see mascotRoom).
+	mascotPad int
 
 	agentsOpen bool
 	agentRuns  []agent.Event
@@ -176,6 +201,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyLayout()
 		return m, nil
 	case tea.KeyMsg:
+		m.keyTick = m.mascotTick
 		cmd := m.handleKey(msg)
 		m.fitPopup()
 		return m, cmd
@@ -199,6 +225,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
+		m.mascotTick++
+		m.stepMascot()
 		if m.inTurn { // running calls show the spinner
 			if m.pruneStale() {
 				m.applyLayout()
@@ -237,10 +265,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) handleTurnMsg(msg tea.Msg) bool {
 	switch msg := msg.(type) {
 	case StreamMsg:
-		m.blocks.appendEvent(model.Event(msg))
-		if c := msg.ToolCall; msg.Kind == model.EventToolCall && c != nil && c.Name == "todo" {
-			m.setTodos(c.Args)
-		}
+		m.appendStream(msg)
 	case ToolResultMsg:
 		m.blocks.resolve(msg.Call, msg.Result, msg.Err)
 	case CompactMsg:
@@ -251,6 +276,9 @@ func (m *Model) handleTurnMsg(msg tea.Msg) bool {
 		if m.debugOpen { // stats show nowhere else
 			m.refreshDebug()
 		}
+	case UpdateMsg:
+		m.opts.Update = string(msg)
+		m.applyLayout()
 	case AgentMsg:
 		m.updateAgentRun(agent.Event(msg))
 	case AgentTraceMsg:
@@ -324,6 +352,7 @@ func (m *Model) submit() tea.Cmd {
 	m.input.SetValue("")
 	m.recordHistory(input)
 	m.inTurn = true
+	m.playEgg(input)
 	m.appendBlock(block{kind: blockUser, text: input})
 	m.applyLayout()
 
@@ -385,6 +414,7 @@ func (m *Model) cancelTurn() {
 // finishTurn settles blocks left open by the turn and reports its error.
 func (m *Model) finishTurn(err error) {
 	m.inTurn = false
+	m.turnEndTick = m.mascotTick
 	if later := m.laterModel; later != nil {
 		m.laterModel = nil
 		defer m.useModel(*later)

@@ -33,7 +33,7 @@ func TestCommandPopup(t *testing.T) {
 	if !strings.Contains(got, "› /sessions") || !strings.Contains(got, "/resume [session]") || strings.Contains(got, "/model") {
 		t.Fatalf("popup for /s:\n%s", got)
 	}
-	if m.popupRows != 3 || m.viewport.Height != 30-2-3-3 { // /sessions, /resume, /agents
+	if m.popupRows != 3 || m.viewport.Height != 30-2-3-3-1 { // /sessions, /resume, /agents; less the mascot's row
 		t.Errorf("popup rows %d, viewport height %d: the chat box should give up the popup's rows", m.popupRows, m.viewport.Height)
 	}
 

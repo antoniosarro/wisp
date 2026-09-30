@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	sidePanelWidth = 36 // outer width of the right-hand column, border included
-	minSplitWidth  = 76 // narrower terminals have no room for side panels
+	sidePanelWidth     = 36 // outer width of the right-hand column, border included
+	minSplitWidth      = 76 // narrower terminals have no room for side panels
+	minMascotChatWidth = 40 // narrower chat text runs under the mascot rather than squeeze beside it
 )
 
 // debugBeside and the rest say where the open panels go: in the side

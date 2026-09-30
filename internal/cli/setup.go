@@ -35,10 +35,11 @@ type Config struct {
 	Provider        string // OpenRouter upstream provider to pin, from --provider
 	Cheapest        bool   // OpenRouter: route to the model's two cheapest providers, from --cheapest
 	SkipPermissions bool
-	Suggest         bool // from --suggest: the TUI proposes a next message after each reply
-	ContextWindow   int  // from --context-window; overrides what the endpoint reports
-	MaxAgents       int  // from --max-agents: sub-agents running at once
-	NoSummarize     bool // from --no-summarize: masking only
+	Suggest         bool   // from --suggest: the TUI proposes a next message after each reply
+	TraceURL        string // where --trace serves the trace page, shown on the TUI's splash
+	ContextWindow   int    // from --context-window; overrides what the endpoint reports
+	MaxAgents       int    // from --max-agents: sub-agents running at once
+	NoSummarize     bool   // from --no-summarize: masking only
 	// TrustProject says the project's .wisp config (MCP servers) may be
 	// used: --trust-project, or the user's answer (trust.go).
 	TrustProject  bool

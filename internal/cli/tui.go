@@ -44,10 +44,12 @@ func runTUI(ctx context.Context, cfg Config, provider *openaicompat.Client, info
 
 	wd, _ := os.Getwd()
 	m := tui.NewModel(ctx, loop, send, msgCh, tui.Options{
-		Model:   info,
-		Models:  models,
-		WorkDir: wd,
-		Suggest: cfg.Suggest,
+		Model:    info,
+		Models:   models,
+		BaseURL:  cfg.BaseURL,
+		WorkDir:  wd,
+		Suggest:  cfg.Suggest,
+		TraceURL: cfg.TraceURL,
 		OnModel: func(loop *core.Loop, info model.Info) model.Info {
 			info = cfg.override(info)
 			applyModel(loop, vision, info)
@@ -58,7 +60,13 @@ func runTUI(ctx context.Context, cfg Config, provider *openaicompat.Client, info
 			return info
 		},
 	})
+	tui.UploadImages(os.Stdin, os.Stdout)
 	_, err = tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(tui.NewInput(os.Stdin)), tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
+	if err != nil {
+		// UploadImages entered the alternate screen already; a program that
+		// failed to start never left it. Leaving twice is harmless.
+		_, _ = os.Stdout.WriteString("\x1b[?1049l")
+	}
 	cancel() // stop any in-flight turn, then let it record its results
 	m.Wait()
 	return err

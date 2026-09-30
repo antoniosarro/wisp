@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/antoniosarro/wisp/internal/agent"
+	"github.com/antoniosarro/wisp/internal/model"
 )
 
 // applyLayout recomputes component sizes from the terminal size and
@@ -19,6 +20,12 @@ func (m *Model) applyLayout() {
 	}
 	m.input.SetWidth(max(1, m.width-6))
 	m.input.SetHeight(min(5, max(1, m.height-5), max(1, m.input.LineCount()))) // leave room for a 1-line chat box
+	chatWidth := m.chatWidth()
+	// applyLayout runs on many events; the splash and the approval details
+	// are rebuilt only when what they show changes.
+	if key := (splashKey{m.opts.Model, m.loop.SessionID, m.opts.Update, chatWidth}); key != m.splashKey {
+		m.splash, m.splashKey = renderSplash(m.opts, m.loop.SessionID, chatWidth), key
+	}
 	if len(m.pending) > 0 {
 		req := m.pending[0]
 		m.approval.Width = max(1, m.width-4)
@@ -36,12 +43,17 @@ func (m *Model) applyLayout() {
 		}
 	}
 	boxHeight := max(0, m.height-lipgloss.Height(m.footer())-2) // chat box border
+	m.mascotPad = 0
+	if _, rows := m.mascotRoom(); boxHeight > rows {
+		m.mascotPad = rows
+	}
+	vpHeight := boxHeight - m.mascotPad
 	if !m.ready {
-		m.viewport = viewport.New(m.chatWidth(), boxHeight)
+		m.viewport = viewport.New(chatWidth, vpHeight)
 		m.ready = true
 	} else {
-		m.viewport.Width = m.chatWidth()
-		m.viewport.Height = boxHeight
+		m.viewport.Width = chatWidth
+		m.viewport.Height = vpHeight
 	}
 	// Full-screen debug takes the chat box's place, borders included.
 	m.debug.Width, m.debug.Height = max(1, m.width), boxHeight+2
@@ -49,17 +61,25 @@ func (m *Model) applyLayout() {
 		m.refreshDebug()
 	}
 	if m.overlayText != "" {
-		m.overlay.Width, m.overlay.Height = max(1, m.chatWidth()), boxHeight
+		m.overlay.Width, m.overlay.Height = max(1, m.chatWidth()), vpHeight
 		m.overlay.SetContent(ansi.Hardwrap(renderNotice(m.overlayText, m.chatWidth()), m.chatWidth(), true))
 	}
 	m.syncViewport()
 }
 
-// approvalKey identifies what the approval viewport shows.
-type approvalKey struct {
-	reply         chan<- Answer
-	width, height int
-}
+// splashKey and approvalKey identify what a cached render shows.
+type (
+	splashKey struct {
+		model   model.Info
+		session string
+		update  string
+		width   int
+	}
+	approvalKey struct {
+		reply         chan<- Answer
+		width, height int
+	}
+)
 
 // refreshDebug re-renders the debug panel's full-screen view.
 func (m *Model) refreshDebug() {
@@ -71,7 +91,27 @@ func (m *Model) chatWidth() int {
 	if side := m.sideWidth(); side > 0 {
 		return max(20, m.width-side-6)
 	}
+	if cols, _ := m.mascotRoom(); cols > 0 {
+		return m.width - 4 - cols // border and padding, then the mascot
+	}
 	return max(1, m.width-6)
+}
+
+// mascotRoom is the columns or rows the transcript leaves free for the
+// mascot in the chat box's corner, so text never runs underneath it: the
+// image sprite gets a gutter beside the text, the one-line text sprite a
+// row below it. With a side column the mascot sits over that instead, and a
+// chat too narrow to spare the gutter lets it cover the text.
+func (m *Model) mascotRoom() (cols, rows int) {
+	switch {
+	case m.sideWidth() > 0:
+		return 0, 0
+	case mascotImages == nil:
+		return 0, 1
+	case m.width-4-mascotCols >= minMascotChatWidth:
+		return mascotCols, 0
+	}
+	return 0, 0
 }
 
 // syncViewport re-renders the transcript into the viewport.
@@ -133,15 +173,20 @@ func (m *Model) render() string {
 		chat.WriteString(part)
 		lines += n
 	}
+	if m.viewing != 0 || m.splash == "" {
+		return chat.String()
+	}
 	if len(shown) == 0 {
-		return ""
+		return m.splash
 	}
-	pad := max(0, m.viewport.Height-lines)
+	// The chat starts after the splash and one blank line, plus any padding.
+	splashLines := strings.Count(m.splash, "\n") + 1
+	pad := max(0, m.viewport.Height-(splashLines+1+lines))
 	for i := range m.blockLines {
-		m.blockLines[i].start += pad
-		m.blockLines[i].end += pad
+		m.blockLines[i].start += splashLines + 1 + pad
+		m.blockLines[i].end += splashLines + 1 + pad
 	}
-	return strings.Repeat("\n", pad) + chat.String()
+	return m.splash + strings.Repeat("\n", pad+2) + chat.String()
 }
 
 // markGutter draws a bar in the left margin of each line.
@@ -249,7 +294,7 @@ func (m *Model) View() string {
 	default:
 		main = m.chatBox(max(1, m.width-2))
 	}
-	return fitView(m.overlayPicker(main)+"\n"+m.footer(), m.width, m.height)
+	return fitView(m.overlayPicker(m.overlayMascot(main))+"\n"+m.footer(), m.width, m.height)
 }
 
 // fitView clips s to the terminal, so an oversized frame can't scroll it.
@@ -282,10 +327,10 @@ func (m *Model) footer() string {
 // top border.
 func (m *Model) chatBox(width int) string {
 	if m.overlayText != "" {
-		box := styleChatBox.Width(width).Render(m.overlay.View())
+		box := styleChatBox.Width(width).Render(m.overlay.View() + strings.Repeat("\n", m.mascotPad))
 		return withBorderLabel(box, cmp.Or(m.notice, "esc to close · pgup/pgdown scroll"))
 	}
-	box := styleChatBox.Width(width).Render(m.viewport.View())
+	box := styleChatBox.Width(width).Render(m.viewport.View() + strings.Repeat("\n", m.mascotPad))
 	if m.viewing != 0 {
 		left, right := m.viewLabel()
 		box = withTopLabel(box, left, right, styleApprovalBorder)

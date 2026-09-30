@@ -132,6 +132,7 @@ func TestEscDeselectsThenHints(t *testing.T) {
 
 func TestSelectAndExpandBlock(t *testing.T) {
 	m, _ := newTestModel(t, &testutil.ScriptedProvider{})
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 40}) // room for the splash and the output
 	m.appendBlock(toolCallBlock(model.ToolCall{ID: "1", Name: "bash", Args: json.RawMessage(`{"command":"ls"}`)}))
 	m.blocks.resolve(model.ToolCall{ID: "1"}, tool.Result{Content: "main.go\ngo.mod"}, nil)
 	m.appendBlock(block{kind: blockAnswer, text: "Two files."})

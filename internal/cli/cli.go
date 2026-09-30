@@ -105,6 +105,7 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("--trace: %w", err)
 		}
+		cfg.TraceURL = url
 		fmt.Fprintf(os.Stderr, "wisp: trace at %s\n", url)
 	}
 

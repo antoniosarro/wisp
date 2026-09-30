@@ -45,8 +45,29 @@ lint:
     golangci-lint run
 
 # run fmt + vet + lint + test, the full pre-commit check
-check: fmt vet lint test
+check: fmt vet lint test sprites-check
 
 # tidy go.mod and go.sum to match the current source tree
 tidy:
     go mod tidy
+
+# One <tag>.png of 128px frames per tag (--split-tags leaves {tag} empty in 1.3).
+# export assets/mascot/mascot.aseprite into the embedded mascot strips
+sprites dir="assets/mascot":
+    for t in $(aseprite -b --list-tags assets/mascot/mascot.aseprite); do \
+        aseprite -b --tag $t assets/mascot/mascot.aseprite --scale 2 \
+            --sheet-type horizontal --sheet {{dir}}/$t.png >/dev/null; \
+    done
+
+# The PNGs are committed because every build embeds them, but only a machine
+# with Aseprite can make them, so edits to the source are easy to forget.
+# fail if the mascot strips differ from a fresh export (skipped without Aseprite)
+sprites-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v aseprite >/dev/null || { echo "sprites-check: no aseprite, skipped"; exit 0; }
+    tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+    mkdir "$tmp/new" "$tmp/old"
+    just sprites "$tmp/new"
+    cp assets/mascot/*.png "$tmp/old"
+    diff -rq "$tmp/old" "$tmp/new" || { echo "assets/mascot: the PNGs are out of date; run just sprites, and delete strips whose tag is gone"; exit 1; }

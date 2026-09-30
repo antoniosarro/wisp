@@ -17,6 +17,10 @@
 //   - suggest.go: a suggested next message after each reply (--suggest)
 //   - agents.go: sub-agent runs: the Agents panel and their tool cards
 //   - agentview.go: a sub-agent's own conversation, in place of the chat
+//   - logo.go: the splash, and uploading images to kitty-graphics terminals
+//   - mascot.go: the animated mascot in the corner, and its easter eggs
+//   - termcolors.go, termcolors_unix.go, termcolors_other.go: asking the
+//     terminal for its colors, to draw the mascot in them
 //   - mouse.go: hover, clicks, drag selection, and copying (OSC 52 as a
 //     fallback)
 //   - permission.go: Prompter, which asks for approval through the UI
@@ -63,6 +67,9 @@ type TurnDoneMsg struct {
 
 // CompactMsg is a compaction's start or end forwarded from core.Loop.
 type CompactMsg core.CompactEvent
+
+// UpdateMsg is the version of a newer wisp release, found after startup.
+type UpdateMsg string
 
 // StatsMsg is one step's stats snapshot forwarded from core.Loop.
 type StatsMsg core.StepStats

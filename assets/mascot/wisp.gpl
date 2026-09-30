@@ -1,0 +1,14 @@
+GIMP Palette
+Name: wisp
+Columns: 4
+#
+ 21  19  31	outline
+244 242 255	body
+201 196 232	body shade
+142 139 176	dim
+215  65 245	magenta
+ 80 220 235	cyan
+162 155 245	lavender
+ 94 230 176	mint
+255  92 138	rose
+255 184 108	amber

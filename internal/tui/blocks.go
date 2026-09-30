@@ -23,6 +23,8 @@ const (
 	blockToolCall
 	blockTurnError
 	blockNotice
+	blockCompaction // text is empty while it runs; detail is the summary
+	blockContext    // usage is what /context showed
 )
 
 // toolStatus is where a tool call block's call stands.
@@ -42,6 +44,8 @@ type block struct {
 	cachedWidth int
 	kind        blockKind
 	text        string // user, answer, notice, turnError
+	detail      string // compaction: the summary the model now sees
+	usage       *contextUsage
 	expanded    bool
 	// stream accumulates a streaming answer or reasoning block; text or
 	// reasoningText is its String(), which is O(1), so deltas don't recopy
@@ -69,7 +73,7 @@ func (b *block) invalidate() { b.cached = "" }
 
 // active blocks animate a spinner, so they are never served from cache.
 func (b *block) active() bool {
-	return (b.kind == blockReasoning && !b.reasoningDone) || (b.kind == blockToolCall && b.toolStatus == toolRunning)
+	return (b.kind == blockReasoning && !b.reasoningDone) || (b.kind == blockToolCall && b.toolStatus == toolRunning) || (b.kind == blockCompaction && b.text == "")
 }
 
 // collapsible blocks toggle between a summary and their full content.
@@ -79,6 +83,8 @@ func (b *block) collapsible() bool {
 		return true
 	case blockToolCall:
 		return (b.toolStatus == toolOK || b.toolStatus == toolFailed) && b.toolResult != ""
+	case blockCompaction:
+		return b.detail != ""
 	}
 	return false
 }
@@ -214,6 +220,10 @@ func (l *blockList) settle(err error) {
 				b.invalidate()
 			}
 		}
+		if b.kind == blockCompaction && b.text == "" {
+			b.text = "Compaction stopped; the context is unchanged"
+			b.invalidate()
+		}
 	}
 	switch {
 	case errors.Is(err, context.Canceled):
@@ -229,11 +239,17 @@ func (m *Model) appendBlock(b block) {
 	m.autoScroll = true
 }
 
-// replayHistory rebuilds the transcript from saved messages. What the
-// harness wrote itself, reminders and stand-ins for missing replies, is
-// the model's business, not the user's.
+// replayHistory rebuilds the transcript from saved messages, marking where
+// each compaction began the model's view. What the harness wrote itself,
+// reminders and stand-ins for missing replies, is the model's business,
+// not the user's.
 func (m *Model) replayHistory(history []model.Message) {
-	for _, msg := range history {
+	marks := m.loop.Compactions
+	for i, msg := range history {
+		for len(marks) > 0 && marks[0].FirstKept <= i {
+			m.blocks = append(m.blocks, compactionBlock(marks[0], marks[0].Text()))
+			marks = marks[1:]
+		}
 		switch msg.Role {
 		case model.RoleUser:
 			if strings.HasPrefix(msg.Content, core.ReminderPrefix) {
@@ -247,6 +263,9 @@ func (m *Model) replayHistory(history []model.Message) {
 				m.blocks = append(m.blocks, block{kind: blockAnswer, text: msg.Content})
 			}
 			for _, call := range msg.ToolCalls {
+				if call.Name == "todo" {
+					m.setTodos(call.Args)
+				}
 				m.blocks = append(m.blocks, toolCallBlock(call))
 			}
 		case model.RoleTool:

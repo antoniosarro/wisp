@@ -22,6 +22,7 @@ type Options struct {
 	Model   model.Info   // the current model; empty ID until one is chosen
 	Models  []model.Info // the endpoint's models, offered when Model is empty
 	WorkDir string       // where file tools act, shown on approvals
+	Suggest bool         // ask for a suggested next message after each reply
 	// OnModel, if set, configures loop for a newly described model and
 	// returns the details to show (with any overrides applied).
 	OnModel func(loop *core.Loop, info model.Info) model.Info
@@ -41,6 +42,7 @@ type Model struct {
 	spin     spinner.Model
 	approval viewport.Model // the front request's details
 	overlay  viewport.Model // help, shown over the transcript
+	debug    viewport.Model // the debug panel, full screen on a narrow terminal
 
 	width, height int
 	ready         bool   // the viewport exists: a WindowSizeMsg has come
@@ -69,6 +71,16 @@ type Model struct {
 	noting       bool        // typing a note to send with a denial
 	noteDraft    string      // the draft set aside while noting
 	approvalKey  approvalKey // what the approval viewport holds
+
+	stats     core.StepStats // the latest step's, from the loop
+	cost      costSummary    // this session's spend, priced request by request
+	debugOpen bool
+	todos     []core.Todo // the model's latest task list
+	todoOpen  bool
+
+	suggestion    string // proposed next message, accepted with →
+	suggestGen    int    // identifies the latest suggestion request
+	suggestCancel context.CancelFunc
 
 	overlayText string
 	modal       *picker // a list to choose from, over the chat
@@ -116,6 +128,7 @@ func NewModel(ctx context.Context, loop *core.Loop, send func(tea.Msg), msgs <-c
 		opts:          opts,
 		approval:      viewport.New(1, 1),
 		overlay:       viewport.New(1, 1),
+		debug:         viewport.New(1, 1),
 		knownModels:   opts.Models,
 		input:         ti,
 		spin:          sp,
@@ -158,6 +171,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case modelInfoMsg:
 		m.useModel(msg)
 		return m, nil
+	case suggestionMsg:
+		m.showSuggestion(msg)
+		return m, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
@@ -177,6 +193,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case TurnDoneMsg:
 		m.finishTurn(msg.Err)
 		cmds := []tea.Cmd{listenForMsg(m.msgs), m.input.Focus()}
+		if msg.Err == nil && m.opts.Suggest && !msg.Compact {
+			cmds = append(cmds, m.requestSuggestion())
+		}
 		// Ollama and LM Studio load a model on first use; only then do
 		// they report the context it runs with.
 		if msg.Err == nil && m.loop.ContextWindow == 0 && !m.redescribed {
@@ -197,10 +216,19 @@ func (m *Model) handleTurnMsg(msg tea.Msg) bool {
 	switch msg := msg.(type) {
 	case StreamMsg:
 		m.blocks.appendEvent(model.Event(msg))
+		if c := msg.ToolCall; msg.Kind == model.EventToolCall && c != nil && c.Name == "todo" {
+			m.setTodos(c.Args)
+		}
 	case ToolResultMsg:
 		m.blocks.resolve(msg.Call, msg.Result, msg.Err)
 	case CompactMsg:
 		m.applyCompaction(core.CompactEvent(msg))
+	case StatsMsg:
+		m.stats = core.StepStats(msg)
+		m.cost.add(m.stats, m.opts.Model)
+		if m.debugOpen { // stats show nowhere else
+			m.refreshDebug()
+		}
 	case PermissionRequestMsg:
 		if msg.Context != nil && msg.Context.Err() != nil {
 			return true
@@ -216,18 +244,6 @@ func (m *Model) handleTurnMsg(msg tea.Msg) bool {
 	}
 	m.dirty = true
 	return true
-}
-
-// applyCompaction notes a compaction's start and end in the transcript.
-func (m *Model) applyCompaction(e core.CompactEvent) {
-	text := "Compacting the conversation…"
-	switch {
-	case e.Done && e.Err != nil:
-		text = "Compacted without a summary: " + e.Err.Error()
-	case e.Done:
-		text = "Compacted the conversation."
-	}
-	m.blocks = append(m.blocks, block{kind: blockNotice, text: text})
 }
 
 // updateInput forwards msg to the textarea, relaying out only when its
@@ -255,6 +271,7 @@ func (m *Model) submit() tea.Cmd {
 	if input == "" {
 		return nil
 	}
+	m.clearSuggestion()
 	m.closeOverlay()
 	if strings.HasPrefix(input, "/") {
 		m.input.SetValue("")

@@ -40,6 +40,7 @@ var (
 	stylePermissionBox   = boxStyle(colorMagenta)
 	styleInputBox        = boxStyle(colorMuted)
 	styleChatBox         = boxStyle(colorMuted)
+	styleDebugPanel      = boxStyle(colorMuted)
 
 	styleToolText    = lipgloss.NewStyle().Bold(true)
 	styleToolDetail  = lipgloss.NewStyle().Foreground(colorDim)
@@ -63,6 +64,7 @@ var (
 
 	styleError      = lipgloss.NewStyle().Bold(true).Foreground(colorRose)
 	styleBorderLine = lipgloss.NewStyle().Foreground(colorMuted)
+	styleSplashHead = lipgloss.NewStyle().Bold(true).Foreground(colorMagenta)
 	styleDim        = lipgloss.NewStyle().Foreground(colorDim)
 	styleChatMargin = lipgloss.NewStyle().PaddingLeft(chatMarginLeft)
 )

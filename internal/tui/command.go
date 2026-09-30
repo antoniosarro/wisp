@@ -6,7 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const helpText = `Commands: /help, /clear, /model [NAME], /resume [SESSION], /sessions
+const helpText = `Commands: /help, /context, /compact [FOCUS], /clear, /model [NAME], /resume [SESSION], /sessions, /debug, /todo
 Typing / lists the commands, and after /model or /resume their choices: ↑/↓ choose, Tab completes, Enter runs, Esc closes the list.
 /model and /resume without an argument open a list to choose from: type to filter it.
 
@@ -22,6 +22,12 @@ t denies with a note telling wisp what to do instead, Esc cancels the turn.
 Arrows/PgUp/PgDown scroll details. Keys typed while you were typing go to your draft.
 /model lists models: arrows choose, Enter switches.
 /clear starts a new session; /resume or /sessions lists saved ones to continue.
+/todo shows or hides the task panel, which opens when the model first plans with the todo tool.
+/compact summarizes the conversation so far to free context, keeping recent messages
+verbatim; any text after it says what the summary should keep in detail. wisp also
+compacts on its own when the context fills up.
+Side panels stack on the right; on narrow terminals the tasks stay in the chat and /debug replaces the transcript.
+Start wisp with --suggest to get a suggested next message after each reply (→ accepts it).
 Set WISP_THEME=light for a light terminal palette.`
 
 // Notices shown from more than one place.
@@ -39,6 +45,10 @@ func (m *Model) runCommand(input string) (cmd tea.Cmd, ok bool) {
 	}
 	args := fields[1:]
 	switch fields[0] {
+	case "debug":
+		m.toggleDebug()
+	case "todo":
+		m.toggleTodo()
 	case "help":
 		m.showHelp()
 	case "sessions":
@@ -57,6 +67,10 @@ func (m *Model) runCommand(input string) (cmd tea.Cmd, ok bool) {
 			return nil, true
 		}
 		return m.listModels(strings.Join(args, " ")), true
+	case "compact":
+		m.startCompact(strings.Join(args, " "))
+	case "context":
+		m.showContext()
 	default:
 		return nil, false
 	}
@@ -68,6 +82,12 @@ func (m *Model) runCommand(input string) (cmd tea.Cmd, ok bool) {
 // border's "ctrl+end for latest" hint points at it.
 func (m *Model) notify(text string) {
 	m.blocks = append(m.blocks, block{kind: blockNotice, text: text})
+	m.applyLayout()
+}
+
+// toggleDebug shows or hides the debug panel.
+func (m *Model) toggleDebug() {
+	m.debugOpen = !m.debugOpen
 	m.applyLayout()
 }
 

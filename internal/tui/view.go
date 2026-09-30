@@ -10,7 +10,7 @@ import (
 )
 
 // applyLayout recomputes component sizes from the terminal size and
-// whatever currently occupies the footer: the input, or an approval.
+// whatever currently occupies the footer and side panel.
 func (m *Model) applyLayout() {
 	if m.width <= 0 || m.height <= 0 {
 		return
@@ -41,6 +41,11 @@ func (m *Model) applyLayout() {
 		m.viewport.Width = m.chatWidth()
 		m.viewport.Height = boxHeight
 	}
+	// Full-screen debug takes the chat box's place, borders included.
+	m.debug.Width, m.debug.Height = max(1, m.width), boxHeight+2
+	if m.debugOpen {
+		m.refreshDebug()
+	}
 	if m.overlayText != "" {
 		m.overlay.Width, m.overlay.Height = max(1, m.chatWidth()), boxHeight
 		m.overlay.SetContent(ansi.Hardwrap(renderNotice(m.overlayText, m.chatWidth()), m.chatWidth(), true))
@@ -54,8 +59,16 @@ type approvalKey struct {
 	width, height int
 }
 
+// refreshDebug re-renders the debug panel's full-screen view.
+func (m *Model) refreshDebug() {
+	m.debug.SetContent(renderDebugPanel(m.stats, m.opts, m.cost, 0, min(sidePanelWidth, m.debug.Width)))
+}
+
 // chatWidth is the transcript's content width inside the chat box.
 func (m *Model) chatWidth() int {
+	if side := m.sideWidth(); side > 0 {
+		return max(20, m.width-side-6)
+	}
 	return max(1, m.width-6)
 }
 
@@ -142,6 +155,10 @@ func (m *Model) renderBlock(b *block, w int, live bool) string {
 		return m.renderReasoningBlock(b, w)
 	case blockToolCall:
 		return m.renderToolCallBlock(b, w)
+	case blockCompaction:
+		return m.renderCompactionBlock(b, w)
+	case blockContext:
+		return renderContextBlock(*b.usage, w)
 	}
 	return ""
 }
@@ -183,7 +200,7 @@ func (m *Model) renderToolCallBlock(b *block, w int) string {
 	return lipgloss.NewStyle().PaddingLeft(chatContentLeft).Render(card)
 }
 
-// View draws the chat box over the input.
+// View draws the chat box, and any side panels, over the footer.
 func (m *Model) View() string {
 	if m.quitting {
 		return ""
@@ -194,12 +211,21 @@ func (m *Model) View() string {
 	if m.width < 20 || m.height < 8 {
 		return fitView("Terminal too small; resize to 20×8", m.width, m.height)
 	}
-	if m.viewport.Height <= 0 {
+	var main string
+	switch {
+	case m.viewport.Height <= 0 && !m.debugFullscreen():
 		// The footer (a tall approval box) takes the whole screen; an
 		// empty chat box would push its bottom off it.
 		return fitView(m.footer(), m.width, m.height)
+	case m.debugFullscreen():
+		main = m.debug.View()
+	case m.sideWidth() > 0:
+		chat := m.chatBox(max(1, m.width-m.sideWidth()-2))
+		main = lipgloss.JoinHorizontal(lipgloss.Top, chat, m.renderSideColumn(m.viewport.Height+2))
+	default:
+		main = m.chatBox(max(1, m.width-2))
 	}
-	return fitView(m.overlayPicker(m.chatBox(max(1, m.width-2)))+"\n"+m.footer(), m.width, m.height)
+	return fitView(m.overlayPicker(main)+"\n"+m.footer(), m.width, m.height)
 }
 
 // fitView clips s to the terminal, so an oversized frame can't scroll it.

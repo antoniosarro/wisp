@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/session"
 	"github.com/antoniosarro/wisp/internal/span"
@@ -143,8 +144,11 @@ func (m *Model) switchSession(store *session.Store, id string, history []model.M
 	if err := m.loop.LoadCompaction(); err != nil {
 		m.notify(err.Error() + "; resuming without the summary")
 	}
+	m.clearSuggestion()
 	m.blocks = nil
 	m.inputHistory, m.historyIndex, m.draft = nil, 0, ""
+	m.stats, m.cost = core.StepStats{}, costSummary{}
+	m.todos, m.todoOpen = nil, false
 	m.selectedBlock = -1
 	m.notice = ""
 	m.replayHistory(history)

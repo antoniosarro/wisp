@@ -10,6 +10,11 @@
 //   - picker.go: the modal list /model and /resume choose from
 //   - model_switch.go: listing, switching, and describing models
 //   - session.go: resuming and starting sessions mid-run
+//   - panels.go: the side column: tasks and debug, and the task list
+//   - debug_panel.go: token use, context budget, cost, and speed
+//   - context.go: /context, the window drawn as a grid by category
+//   - compact.go: /compact, and compactions shown in the transcript
+//   - suggest.go: a suggested next message after each reply (--suggest)
 //   - permission.go: Prompter, which asks for approval through the UI
 //   - approval.go: what an approval shows: the call, a diff for edits
 //   - blocks.go: the transcript as blocks, built from the stream and
@@ -45,14 +50,18 @@ type ToolResultMsg struct {
 	Err    error
 }
 
-// TurnDoneMsg marks the end of a Loop.Run call.
+// TurnDoneMsg marks the end of a Loop.Run call, or of a /compact.
 type TurnDoneMsg struct {
-	Answer string
-	Err    error
+	Answer  string
+	Err     error
+	Compact bool // it ended a /compact, not a turn
 }
 
 // CompactMsg is a compaction's start or end forwarded from core.Loop.
 type CompactMsg core.CompactEvent
+
+// StatsMsg is one step's stats snapshot forwarded from core.Loop.
+type StatsMsg core.StepStats
 
 // RunTurn runs loop.Run in a goroutine, forwarding its callbacks and
 // completion through send as tea.Msgs. Callers must not start another turn
@@ -65,6 +74,9 @@ func RunTurn(ctx context.Context, loop *core.Loop, input string, send func(tea.M
 	loop.OnToolResult = func(call model.ToolCall, res tool.Result, err error) {
 		send(ToolResultMsg{Call: call, Result: res, Err: err})
 	}
+	loop.OnStats = func(s core.StepStats) {
+		send(StatsMsg(s))
+	}
 	loop.OnCompact = func(e core.CompactEvent) {
 		send(CompactMsg(e))
 	}
@@ -72,7 +84,7 @@ func RunTurn(ctx context.Context, loop *core.Loop, input string, send func(tea.M
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		defer recoverTurn(send)
+		defer recoverTurn(send, false)
 		answer, err := loop.Run(ctx, input)
 		send(TurnDoneMsg{Answer: answer, Err: err})
 	}()
@@ -81,8 +93,22 @@ func RunTurn(ctx context.Context, loop *core.Loop, input string, send func(tea.M
 
 // recoverTurn ends a turn that panicked as a failed one, so the UI keeps
 // running and restores the terminal on exit.
-func recoverTurn(send func(tea.Msg)) {
+func recoverTurn(send func(tea.Msg), compact bool) {
 	if p := recover(); p != nil {
-		send(TurnDoneMsg{Err: fmt.Errorf("internal error: %v", p)})
+		send(TurnDoneMsg{Err: fmt.Errorf("internal error: %v", p), Compact: compact})
 	}
+}
+
+// RunCompact runs loop.Compact the way RunTurn runs a turn.
+func RunCompact(ctx context.Context, loop *core.Loop, focus string, send func(tea.Msg)) <-chan struct{} {
+	loop.OnCompact = func(e core.CompactEvent) {
+		send(CompactMsg(e))
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer recoverTurn(send, true)
+		send(TurnDoneMsg{Err: loop.Compact(ctx, focus), Compact: true})
+	}()
+	return done
 }

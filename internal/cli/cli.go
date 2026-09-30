@@ -52,6 +52,7 @@ func run() error {
 	flag.BoolVar(&cfg.Cheapest, "cheapest", false, "OpenRouter only: look up the model's two cheapest zero-data-retention providers and route only to them, cheapest first, in case account preferences override the price sort")
 	flag.BoolVar(&cfg.TrustProject, "trust-project", false, "use this project's .wisp/mcp.json without asking, and remember that (for scripts; wisp asks in a terminal)")
 	flag.BoolVar(&cfg.SkipPermissions, "dangerously-skip-permissions", false, "skip permission prompts (dangerous)")
+	flag.BoolVar(&cfg.Suggest, "suggest", false, "after each reply, ask the model for a suggested next message (one extra request per turn)")
 	flag.BoolVar(&cfg.Vision, "vision", false, "show image files to the model even when the endpoint doesn't report image input")
 	flag.IntVar(&cfg.ContextWindow, "context-window", 0, "context window in tokens, overriding what the endpoint reports")
 	flag.BoolVar(&cfg.NoSummarize, "no-summarize", false, "when the context fills, only mask old tool output; never summarize the conversation")

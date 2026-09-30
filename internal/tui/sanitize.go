@@ -17,7 +17,7 @@ var (
 // removable, once they are joined.
 func (b *block) sanitized() *block {
 	c := *b
-	c.text, c.reasoningText, c.toolResult = sanitize(b.text), sanitize(b.reasoningText), sanitize(b.toolResult)
+	c.text, c.detail, c.reasoningText, c.toolResult = sanitize(b.text), sanitize(b.detail), sanitize(b.reasoningText), sanitize(b.toolResult)
 	c.toolName = sanitize(b.toolName)
 	c.toolArgs = sanitizeJSON(b.toolArgs, sanitize)
 	return &c

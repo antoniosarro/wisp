@@ -52,9 +52,9 @@ func TestRunTurnForwardsStreamAndDone(t *testing.T) {
 	})
 
 	// text, text, the EventDone stream delta itself (forwarded like any
-	// other event), then the loop's own TurnDoneMsg.
-	if len(got) != 4 {
-		t.Fatalf("got %d messages, want 4: %+v", len(got), got)
+	// other event), the step's StatsMsg, then the loop's own TurnDoneMsg.
+	if len(got) != 5 {
+		t.Fatalf("got %d messages, want 5: %+v", len(got), got)
 	}
 	if m, ok := got[0].(StreamMsg); !ok || m.Kind != model.EventTextDelta || m.Text != "hel" {
 		t.Errorf("msg 0 = %+v", got[0])
@@ -65,9 +65,12 @@ func TestRunTurnForwardsStreamAndDone(t *testing.T) {
 	if m, ok := got[2].(StreamMsg); !ok || m.Kind != model.EventDone {
 		t.Errorf("msg 2 = %+v, want a StreamMsg carrying EventDone", got[2])
 	}
-	done, ok := got[3].(TurnDoneMsg)
+	if _, ok := got[3].(StatsMsg); !ok {
+		t.Errorf("msg 3 = %+v, want a StatsMsg", got[3])
+	}
+	done, ok := got[4].(TurnDoneMsg)
 	if !ok || done.Answer != "hello" || done.Err != nil {
-		t.Errorf("msg 3 = %+v, want TurnDoneMsg{Answer: hello}", got[3])
+		t.Errorf("msg 4 = %+v, want TurnDoneMsg{Answer: hello}", got[4])
 	}
 }
 

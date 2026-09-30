@@ -35,6 +35,7 @@ type Config struct {
 	Provider        string // OpenRouter upstream provider to pin, from --provider
 	Cheapest        bool   // OpenRouter: route to the model's two cheapest providers, from --cheapest
 	SkipPermissions bool
+	Suggest         bool // from --suggest: the TUI proposes a next message after each reply
 	ContextWindow   int  // from --context-window; overrides what the endpoint reports
 	MaxAgents       int  // from --max-agents: sub-agents running at once
 	NoSummarize     bool // from --no-summarize: masking only

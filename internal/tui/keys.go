@@ -73,6 +73,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	case "ctrl+end":
 		m.autoScroll = true
 		m.viewport.GotoBottom()
+	case "right":
+		if !m.acceptSuggestion() {
+			return m.updateInput(msg)
+		}
 	case "alt+up", "alt+down":
 		m.recallHistory(k == "alt+up")
 	case "up", "down":
@@ -121,17 +125,24 @@ func (m *Model) back() {
 	case m.selectedBlock >= 0:
 		m.selectedBlock = -1
 		m.syncViewport()
+	case m.suggestion != "":
+		m.clearSuggestion()
 	default:
 		m.notice = "Ctrl+C twice to exit"
 	}
 }
 
-// scroll moves the overlay when one is shown, else the transcript,
+// scroll moves whichever pane fills the screen: the overlay, the debug
+// panel, else the transcript,
 // following new output again once it reaches the bottom.
 func (m *Model) scroll(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
-	if m.overlayText != "" {
+	switch {
+	case m.overlayText != "":
 		m.overlay, cmd = m.overlay.Update(msg)
+		return cmd
+	case m.debugFullscreen():
+		m.debug, cmd = m.debug.Update(msg)
 		return cmd
 	}
 	m.viewport, cmd = m.viewport.Update(msg)

@@ -15,10 +15,14 @@ type command struct{ name, args, desc string }
 // commands are the slash commands, in the order the popup lists them.
 var commands = []command{
 	{"help", "", "keys and commands"},
+	{"context", "", "what fills the context window"},
+	{"compact", "[focus]", "summarize the conversation to free context"},
 	{"clear", "", "start a new session; this one stays saved"},
 	{"model", "[name]", "switch model (lists them without a name)"},
 	{"resume", "[session]", "continue a saved session (lists them without one)"},
 	{"sessions", "", "list saved sessions to resume"},
+	{"debug", "", "show or hide the debug panel"},
+	{"todo", "", "show or hide the task panel"},
 }
 
 // suggestion is one row of the popup: a command, or an argument for one.

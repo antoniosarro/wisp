@@ -48,6 +48,7 @@ func runTUI(ctx context.Context, cfg Config, provider *openaicompat.Client, info
 		Model:   info,
 		Models:  models,
 		WorkDir: wd,
+		Suggest: cfg.Suggest,
 		OnModel: func(loop *core.Loop, info model.Info) model.Info {
 			info = cfg.override(info)
 			applyModel(loop, vision, info)

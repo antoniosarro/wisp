@@ -14,6 +14,7 @@ import (
 	"github.com/antoniosarro/wisp/internal/model/openaicompat"
 	"github.com/antoniosarro/wisp/internal/session"
 	"github.com/antoniosarro/wisp/internal/tui"
+	"github.com/antoniosarro/wisp/internal/version"
 )
 
 // runTUI launches the Bubble Tea frontend. The prompter and turn callbacks
@@ -60,6 +61,11 @@ func runTUI(ctx context.Context, cfg Config, provider *openaicompat.Client, info
 			return info
 		},
 	})
+	go func() {
+		if v := newerRelease(ctx, version.Version); v != "" {
+			send(tui.UpdateMsg(v))
+		}
+	}()
 	tui.UploadImages(os.Stdin, os.Stdout)
 	_, err = tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(tui.NewInput(os.Stdin)), tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
 	if err != nil {

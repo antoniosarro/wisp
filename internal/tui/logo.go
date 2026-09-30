@@ -222,7 +222,8 @@ func renderSplash(opts Options, sessionID string, width int) string {
 	}
 	var rows [][2]string
 	if opts.Update != "" {
-		rows = append(rows, [2]string{"Update available", "Version " + opts.Update})
+		// The tag comes from GitHub, by way of the state file.
+		rows = append(rows, [2]string{"Update available", "Version " + sanitize(opts.Update)})
 	}
 	rows = append(rows, [2]string{"Model", current})
 	if opts.WorkDir != "" {

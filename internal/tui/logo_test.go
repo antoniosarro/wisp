@@ -36,6 +36,7 @@ func TestSplashShowsNoEscapes(t *testing.T) {
 		Model:   model.Info{ID: "model" + evil},
 		WorkDir: "/tmp/repo" + evil,
 		BaseURL: "http://x/v1" + evil,
+		Update:  "9.9.9" + evil,
 	}
 	got := renderSplash(opts, "s1", 120)
 	if strings.Contains(got, "\x1b]52") || strings.Contains(got, "\x1b[2J") {

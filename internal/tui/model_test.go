@@ -22,7 +22,7 @@ func newTestModel(t *testing.T, p model.Provider) (*Model, chan tea.Msg) {
 	t.Helper()
 	ch := make(chan tea.Msg, 64)
 	loop := &core.Loop{Provider: p, Tools: tool.NewRegistry(testutil.EchoTool{})}
-	m := NewModel(context.Background(), loop, func(msg tea.Msg) { ch <- msg }, ch, Options{})
+	m := NewModel(context.Background(), loop, func(msg tea.Msg) { ch <- msg }, ch, Options{Model: model.Info{ID: "test-model"}})
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	return m, ch
 }

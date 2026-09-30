@@ -9,14 +9,16 @@ import (
 	"golang.org/x/term"
 
 	"github.com/antoniosarro/wisp/internal/agent"
+	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/model/openaicompat"
+	"github.com/antoniosarro/wisp/internal/session"
 	"github.com/antoniosarro/wisp/internal/tui"
 )
 
 // runTUI launches the Bubble Tea frontend. The prompter and turn callbacks
 // write to msgCh, which the Model reads, so no *tea.Program is needed up front.
-func runTUI(ctx context.Context, cfg Config, provider *openaicompat.Client, info model.Info) error {
+func runTUI(ctx context.Context, cfg Config, provider *openaicompat.Client, info model.Info, models []model.Info) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	msgCh := make(chan tea.Msg, 64)
@@ -34,14 +36,28 @@ func runTUI(ctx context.Context, cfg Config, provider *openaicompat.Client, info
 
 	// Sub-agents' progress shows in a later version of the UI; printing it
 	// would draw over this one.
-	loop, cleanup, err := newLoop(cfg, provider, info, new(atomic.Bool), tui.NewPrompter(send, done), func(agent.Event) {})
+	vision := new(atomic.Bool)
+	loop, cleanup, err := newLoop(cfg, provider, info, vision, tui.NewPrompter(send, done), func(agent.Event) {})
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
 	wd, _ := os.Getwd()
-	m := tui.NewModel(ctx, loop, send, msgCh, tui.Options{WorkDir: wd})
+	m := tui.NewModel(ctx, loop, send, msgCh, tui.Options{
+		Model:   info,
+		Models:  models,
+		WorkDir: wd,
+		OnModel: func(loop *core.Loop, info model.Info) model.Info {
+			info = cfg.override(info)
+			applyModel(loop, vision, info)
+			rememberModel(cfg.BaseURL, info.ID)
+			if store, ok := loop.Store.(*session.Store); ok {
+				_ = store.SetSessionModel(loop.SessionID, info.ID) // the next resume picks it again
+			}
+			return info
+		},
+	})
 	_, err = tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(tui.NewInput(os.Stdin)), tea.WithAltScreen()).Run()
 	cancel() // stop any in-flight turn, then let it record its results
 	m.Wait()

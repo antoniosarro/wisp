@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/antoniosarro/wisp/internal/model"
+	"github.com/antoniosarro/wisp/internal/termsafe"
 	"github.com/antoniosarro/wisp/internal/version"
 )
 
@@ -122,18 +123,22 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if cfg.ModelName == "" {
+	if cfg.ModelName == "" && prompt != "" {
 		return ambiguousModel(models)
 	}
 
-	provider.SetModel(cfg.ModelName)
-	info := cfg.override(describeModel(ctx, provider, cfg.ModelName))
-	rememberModel(cfg.BaseURL, info.ID)
-	if info.Tools == model.Unsupported {
-		fmt.Fprintf(os.Stderr, "wisp: the endpoint says %s cannot call tools; running it without tools\n", info.ID)
+	var info model.Info // empty until the TUI's picker chooses
+	if cfg.ModelName != "" {
+		provider.SetModel(cfg.ModelName)
+		info = cfg.override(describeModel(ctx, provider, cfg.ModelName))
+		rememberModel(cfg.BaseURL, info.ID)
+		if info.Tools == model.Unsupported {
+			// The name can be the endpoint's: its only model.
+			fmt.Fprintf(os.Stderr, "wisp: the endpoint says %s cannot call tools; running it without tools\n", termsafe.Strip(info.ID))
+		}
 	}
 	if prompt == "" {
-		return runTUI(ctx, cfg, provider, info)
+		return runTUI(ctx, cfg, provider, info, models)
 	}
 	return runSingleShot(ctx, cfg, provider, info, prompt)
 }

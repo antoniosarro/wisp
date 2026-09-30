@@ -1,0 +1,16 @@
+# A model name from the endpoint is printed without its control
+# characters: here the endpoint's only model, which can't call tools.
+
+fakemodel model.yaml
+exec wisp 'hi'
+stdout 'hello'
+stderr 'the endpoint says evilname cannot call tools'
+! stderr '\x1b'
+
+-- model.yaml --
+models:
+  - id: "evil\e[2Jname"
+    supported_parameters: [temperature]
+rules:
+  - repeat: true
+    reply: {text: hello}

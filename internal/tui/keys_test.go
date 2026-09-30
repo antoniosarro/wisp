@@ -54,7 +54,7 @@ func TestReplayRecordsHistory(t *testing.T) {
 		{Role: model.RoleUser, Content: "fix it"},
 		{Role: model.RoleUser, Content: "test it"},
 	}}
-	m := NewModel(context.Background(), loop, func(tea.Msg) {}, nil, Options{})
+	m := NewModel(context.Background(), loop, func(tea.Msg) {}, nil, Options{Model: model.Info{ID: "test-model"}})
 
 	if got := strings.Join(m.inputHistory, "|"); got != "fix it|test it" || m.historyIndex != 2 {
 		t.Errorf("history = %q at %d, want the user's prompts once each, at the draft", got, m.historyIndex)

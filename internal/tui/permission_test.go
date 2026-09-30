@@ -338,7 +338,7 @@ func TestPrompterThroughGate(t *testing.T) {
 	ch := make(chan tea.Msg, 64)
 	send := func(msg tea.Msg) { ch <- msg }
 	loop := &core.Loop{Provider: p, Tools: tool.NewRegistry(permission.Gate{Tool: riskyTool{}, Prompter: NewPrompter(send, nil)})}
-	m := NewModel(context.Background(), loop, send, ch, Options{})
+	m := NewModel(context.Background(), loop, send, ch, Options{Model: model.Info{ID: "test-model"}})
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	typeText(m, "go")

@@ -5,6 +5,11 @@
 //   - view.go: layout and View
 //   - keys.go: key handling: cancelling and quitting, scrolling, input
 //     history, selecting blocks
+//   - command.go: slash commands and the help overlay
+//   - command_popup.go: the popup completing commands and their arguments
+//   - picker.go: the modal list /model and /resume choose from
+//   - model_switch.go: listing, switching, and describing models
+//   - session.go: resuming and starting sessions mid-run
 //   - permission.go: Prompter, which asks for approval through the UI
 //   - approval.go: what an approval shows: the call, a diff for edits
 //   - blocks.go: the transcript as blocks, built from the stream and

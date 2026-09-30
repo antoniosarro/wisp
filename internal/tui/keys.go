@@ -31,6 +31,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if m.noting && len(m.pending) > 0 && k != "ctrl+c" {
 		return m.handleNoteKey(msg)
 	}
+	if m.overlayText != "" && k == "esc" {
+		m.closeOverlay()
+		return nil
+	}
 	if (k == "ctrl+c" || k == "esc") && m.inTurn && m.turnCancel != nil {
 		// A second Ctrl+C quits even if the turn hasn't wound down, e.g. a
 		// stream that ignores cancellation.
@@ -48,6 +52,14 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if len(m.pending) > 0 {
 		return m.handlePermissionKey(msg, typing)
 	}
+	if m.modal != nil {
+		return m.handlePickerKey(msg)
+	}
+	if matches := m.suggestions(); len(matches) > 0 && m.overlayText == "" {
+		if cmd, handled := m.handleCommandKey(k, matches); handled {
+			return cmd
+		}
+	}
 
 	switch k {
 	case "ctrl+c":
@@ -56,6 +68,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		m.back()
 	case "enter":
 		return m.submit()
+	case "f1":
+		m.showHelp()
 	case "ctrl+end":
 		m.autoScroll = true
 		m.viewport.GotoBottom()
@@ -112,10 +126,14 @@ func (m *Model) back() {
 	}
 }
 
-// scroll moves the transcript, following new output again once it
-// reaches the bottom.
+// scroll moves the overlay when one is shown, else the transcript,
+// following new output again once it reaches the bottom.
 func (m *Model) scroll(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
+	if m.overlayText != "" {
+		m.overlay, cmd = m.overlay.Update(msg)
+		return cmd
+	}
 	m.viewport, cmd = m.viewport.Update(msg)
 	m.autoScroll = m.viewport.AtBottom()
 	return cmd
@@ -141,8 +159,8 @@ func (m *Model) recordHistory(input string) {
 	m.draft = ""
 }
 
-// recallHistory steps through submitted prompts, keeping the unsent draft
-// at the end of the list.
+// recallHistory steps through submitted prompts and commands, keeping the
+// unsent draft at the end of the list.
 func (m *Model) recallHistory(older bool) {
 	if len(m.inputHistory) == 0 {
 		return
@@ -160,6 +178,9 @@ func (m *Model) recallHistory(older bool) {
 	} else {
 		m.input.SetValue(m.inputHistory[m.historyIndex])
 	}
+	// A recalled command doesn't open the command popup, so ↑/↓ keep
+	// stepping through history; typing on opens it.
+	m.cmdDismissed = m.input.Value()
 	m.applyLayout()
 }
 

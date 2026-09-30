@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -39,6 +40,10 @@ func (m *Model) applyLayout() {
 	} else {
 		m.viewport.Width = m.chatWidth()
 		m.viewport.Height = boxHeight
+	}
+	if m.overlayText != "" {
+		m.overlay.Width, m.overlay.Height = max(1, m.chatWidth()), boxHeight
+		m.overlay.SetContent(ansi.Hardwrap(renderNotice(m.overlayText, m.chatWidth()), m.chatWidth(), true))
 	}
 	m.syncViewport()
 }
@@ -194,7 +199,7 @@ func (m *Model) View() string {
 		// empty chat box would push its bottom off it.
 		return fitView(m.footer(), m.width, m.height)
 	}
-	return fitView(m.chatBox(max(1, m.width-2))+"\n"+m.footer(), m.width, m.height)
+	return fitView(m.overlayPicker(m.chatBox(max(1, m.width-2)))+"\n"+m.footer(), m.width, m.height)
 }
 
 // fitView clips s to the terminal, so an oversized frame can't scroll it.
@@ -216,11 +221,19 @@ func (m *Model) footer() string {
 	case len(m.pending) > 0:
 		return m.renderApproval(true)
 	}
+	if popup := m.renderCommandPopup(); popup != "" {
+		return popup + "\n" + renderInputBox(m.input.View(), m.width)
+	}
 	return renderInputBox(m.input.View(), m.width)
 }
 
-// chatBox frames the transcript, with any notice in its bottom border.
+// chatBox frames the transcript, or the overlay over it, with any notice
+// in its bottom border.
 func (m *Model) chatBox(width int) string {
+	if m.overlayText != "" {
+		box := styleChatBox.Width(width).Render(m.overlay.View())
+		return withBorderLabel(box, cmp.Or(m.notice, "esc to close · pgup/pgdown scroll"))
+	}
 	box := styleChatBox.Width(width).Render(m.viewport.View())
 	label := m.notice
 	switch {

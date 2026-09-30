@@ -17,9 +17,14 @@ import (
 	"github.com/antoniosarro/wisp/internal/permission"
 )
 
-// Options is the static session info the UI shows.
+// Options is the session info the UI shows and changes.
 type Options struct {
-	WorkDir string // where file tools act, shown on approvals
+	Model   model.Info   // the current model; empty ID until one is chosen
+	Models  []model.Info // the endpoint's models, offered when Model is empty
+	WorkDir string       // where file tools act, shown on approvals
+	// OnModel, if set, configures loop for a newly described model and
+	// returns the details to show (with any overrides applied).
+	OnModel func(loop *core.Loop, info model.Info) model.Info
 }
 
 // Model is the Bubble Tea frontend: a transcript viewport, a prompt input,
@@ -35,6 +40,7 @@ type Model struct {
 	input    textarea.Model
 	spin     spinner.Model
 	approval viewport.Model // the front request's details
+	overlay  viewport.Model // help, shown over the transcript
 
 	width, height int
 	ready         bool   // the viewport exists: a WindowSizeMsg has come
@@ -63,6 +69,19 @@ type Model struct {
 	noting       bool        // typing a note to send with a denial
 	noteDraft    string      // the draft set aside while noting
 	approvalKey  approvalKey // what the approval viewport holds
+
+	overlayText string
+	modal       *picker // a list to choose from, over the chat
+
+	knownModels []model.Info  // the endpoint's models, as last listed
+	argCache    []pickerItem  // what the popup suggests as arguments, while open
+	argCacheFor string        // the command argCache holds arguments for
+	redescribed bool          // asked again after a turn loaded the model
+	laterModel  *modelInfoMsg // a description that came during a turn, applied after it
+
+	cmdIndex     int    // the command chosen in the suggestion popup
+	cmdDismissed string // input for which Esc closed the popup
+	popupRows    int    // rows the popup took at the last layout
 
 	dirty        bool // transcript changed since the last render
 	framePending bool // a frameMsg is scheduled
@@ -96,12 +115,17 @@ func NewModel(ctx context.Context, loop *core.Loop, send func(tea.Msg), msgs <-c
 		msgs:          msgs,
 		opts:          opts,
 		approval:      viewport.New(1, 1),
+		overlay:       viewport.New(1, 1),
+		knownModels:   opts.Models,
 		input:         ti,
 		spin:          sp,
 		autoScroll:    true,
 		selectedBlock: -1,
 	}
 	m.replayHistory(loop.History)
+	if opts.Model.ID == "" {
+		m.showModels(opts.Models, "Choose a model for this session:")
+	}
 	return m
 }
 
@@ -126,7 +150,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyLayout()
 		return m, nil
 	case tea.KeyMsg:
-		return m, m.handleKey(msg)
+		cmd := m.handleKey(msg)
+		m.fitPopup()
+		return m, cmd
+	case modelsMsg:
+		return m, m.handleModels(msg)
+	case modelInfoMsg:
+		m.useModel(msg)
+		return m, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
@@ -145,7 +176,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case TurnDoneMsg:
 		m.finishTurn(msg.Err)
-		return m, tea.Batch(listenForMsg(m.msgs), m.input.Focus())
+		cmds := []tea.Cmd{listenForMsg(m.msgs), m.input.Focus()}
+		// Ollama and LM Studio load a model on first use; only then do
+		// they report the context it runs with.
+		if msg.Err == nil && m.loop.ContextWindow == 0 && !m.redescribed {
+			m.redescribed = true
+			cmds = append(cmds, m.describeModel(m.opts.Model.ID, true))
+		}
+		return m, tea.Batch(cmds...)
 	}
 	if m.handleTurnMsg(msg) {
 		return m, tea.Batch(listenForMsg(m.msgs), m.frame())
@@ -210,14 +248,30 @@ func (m *Model) updateInput(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-// submit starts a turn with the input, unless one is running.
+// submit runs the input as a command, or starts a turn with it unless one
+// is running or no model is chosen.
 func (m *Model) submit() tea.Cmd {
 	input := strings.TrimSpace(m.input.Value())
 	if input == "" {
 		return nil
 	}
+	m.closeOverlay()
+	if strings.HasPrefix(input, "/") {
+		m.input.SetValue("")
+		m.recordHistory(input)
+		cmd, ok := m.runCommand(input)
+		if !ok {
+			m.appendBlock(block{kind: blockTurnError, text: "unknown command: " + input})
+		}
+		m.applyLayout()
+		return cmd
+	}
 	if m.inTurn {
 		m.notice = "Still working: your draft stays here; press Enter again once the turn ends (Esc cancels the turn)"
+		return nil
+	}
+	if m.opts.Model.ID == "" {
+		m.notify(msgChooseModel)
 		return nil
 	}
 
@@ -285,6 +339,10 @@ func (m *Model) cancelTurn() {
 // finishTurn settles blocks left open by the turn and reports its error.
 func (m *Model) finishTurn(err error) {
 	m.inTurn = false
+	if later := m.laterModel; later != nil {
+		m.laterModel = nil
+		defer m.useModel(*later)
+	}
 	if m.turnCancel != nil {
 		m.turnCancel()
 		m.turnCancel = nil

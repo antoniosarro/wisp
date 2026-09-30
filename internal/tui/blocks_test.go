@@ -102,7 +102,7 @@ func TestReplayHistory(t *testing.T) {
 		{Role: model.RoleTool, ToolCallID: "call_0", Content: "a.go"},
 		{Role: model.RoleAssistant, Content: "One file."},
 	}}
-	m := NewModel(context.Background(), loop, func(tea.Msg) {}, nil, Options{})
+	m := NewModel(context.Background(), loop, func(tea.Msg) {}, nil, Options{Model: model.Info{ID: "test-model"}})
 
 	var kinds []blockKind
 	for _, b := range m.blocks {

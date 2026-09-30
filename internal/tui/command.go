@@ -1,0 +1,94 @@
+package tui
+
+import (
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+const helpText = `Commands: /help, /clear, /model [NAME], /resume [SESSION], /sessions
+Typing / lists the commands, and after /model or /resume their choices: ↑/↓ choose, Tab completes, Enter runs, Esc closes the list.
+/model and /resume without an argument open a list to choose from: type to filter it.
+
+Enter sends; Alt+Enter or Ctrl+J inserts a newline.
+Up/Down (or Alt+Up/Down) recall sent prompts and commands. You can draft while a turn runs.
+Esc or Ctrl+C cancels a running turn. When idle, Esc closes this view or clears
+a selection; Ctrl+C clears the input, and twice exits.
+PgUp/PgDown scroll; Ctrl+End follows the latest output.
+Alt+Left/Right selects transcript blocks; Ctrl+O expands/collapses.
+Ctrl+R toggles the latest reasoning block.
+Approvals: y allows, a always allows matching calls this session, n denies,
+t denies with a note telling wisp what to do instead, Esc cancels the turn.
+Arrows/PgUp/PgDown scroll details. Keys typed while you were typing go to your draft.
+/model lists models: arrows choose, Enter switches.
+/clear starts a new session; /resume or /sessions lists saved ones to continue.
+Set WISP_THEME=light for a light terminal palette.`
+
+// Notices shown from more than one place.
+const (
+	msgChooseModel     = "Choose a model first: /model NUMBER or /model NAME (/model lists them)."
+	msgBusySwitchModel = "Cancel or finish the current turn before switching models."
+	msgNoModelSwitch   = "Model switching is unavailable for this provider."
+)
+
+// runCommand handles a "/name args..." input; ok is false for unknown commands.
+func (m *Model) runCommand(input string) (cmd tea.Cmd, ok bool) {
+	fields := strings.Fields(strings.TrimPrefix(input, "/"))
+	if len(fields) == 0 {
+		return nil, false
+	}
+	args := fields[1:]
+	switch fields[0] {
+	case "help":
+		m.showHelp()
+	case "sessions":
+		m.pickSession()
+	case "resume":
+		if len(args) == 0 {
+			m.pickSession()
+		} else {
+			m.resumeSession(args[0])
+		}
+	case "clear":
+		m.clearSession()
+	case "model":
+		if m.inTurn {
+			m.notify(msgBusySwitchModel)
+			return nil, true
+		}
+		return m.listModels(strings.Join(args, " ")), true
+	default:
+		return nil, false
+	}
+	return nil, true
+}
+
+// notify appends an informational block to the transcript. Unlike a
+// prompt, it doesn't pull a reader who scrolled up back to the bottom; the
+// border's "ctrl+end for latest" hint points at it.
+func (m *Model) notify(text string) {
+	m.blocks = append(m.blocks, block{kind: blockNotice, text: text})
+	m.applyLayout()
+}
+
+// showHelp shows the keys and commands over the transcript.
+func (m *Model) showHelp() {
+	m.modal = nil
+	m.showOverlay(helpText)
+}
+
+// showOverlay shows reference text over the transcript until Esc, so it
+// doesn't pile up in the chat.
+func (m *Model) showOverlay(text string) {
+	m.overlayText = text
+	m.overlay.GotoTop()
+	m.applyLayout()
+}
+
+// closeOverlay hides the overlay, if one is shown.
+func (m *Model) closeOverlay() {
+	if m.overlayText != "" {
+		m.overlayText = ""
+		m.applyLayout()
+	}
+}

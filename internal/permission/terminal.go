@@ -44,6 +44,7 @@ func (p TerminalPrompter) PromptContext(ctx context.Context, name string, args j
 // ask prints the call, with control characters shown rather than acted on
 // (termsafe.Show), and reads one line of answer. The rule label needs it as
 // much as the arguments: for bash it is built from the decoded command.
+// A write through a symlink also names the file it lands in.
 func (p TerminalPrompter) ask(origin, name string, args json.RawMessage) Decision {
 	out := p.Out
 	if out == nil {
@@ -58,7 +59,11 @@ func (p TerminalPrompter) ask(origin, name string, args json.RawMessage) Decisio
 	if origin != "" {
 		who = "sub-agent " + origin
 	}
-	_, _ = fmt.Fprintf(out, "%s wants to run: %s(%s)\n[y] allow  [a] always allow %s  [N] deny: ", who, name, termsafe.Show(string(args)), termsafe.Show(RuleLabel(name, args)))
+	_, _ = fmt.Fprintf(out, "%s wants to run: %s(%s)\n", who, name, termsafe.Show(string(args)))
+	if target := writeTarget(name, args); target != "" {
+		_, _ = fmt.Fprintf(out, "the path is a symlink: this writes %s\n", termsafe.Show(target))
+	}
+	_, _ = fmt.Fprintf(out, "[y] allow  [a] always allow %s  [N] deny: ", termsafe.Show(RuleLabel(name, args)))
 
 	switch strings.TrimSpace(strings.ToLower(readLine(in))) {
 	case "y", "yes":

@@ -76,7 +76,9 @@ You are a code search specialist. Report findings as file:line references.
 - **Context.** A sub-agent's loop knows its model's context window, output
   cap, and price: the main model's, or what its own endpoint reports,
   looked up once. So it clips large results, masks old ones, and, when the
-  window is known, compacts (docs/compaction.md).
+  window is known, compacts (docs/compaction.md). A sub-agent whose model
+  the endpoint says can't call tools runs without them, as the main agent
+  does: it can answer from its task, but not read or run anything.
 - **Saved history.** Only the `agent` call and its report are saved in the
   session; the sub-agent's own steps are not.
 - **MCP.** Sub-agents share the main session's MCP connections (see
@@ -99,5 +101,5 @@ You are a code search specialist. Report findings as file:line references.
     prompt.
   - Sub-agent chats live only in memory: after `/resume`, clicking an old
     `agent` box expands its report instead.
-- **Tokens.** `/debug` shows sub-agent tokens as `agents Σ`, separate from
-  the main session.
+- **Tokens.** `/debug` shows sub-agent tokens and cost on their own
+  `agents` rows, separate from the main session.

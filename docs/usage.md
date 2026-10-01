@@ -13,6 +13,8 @@ wisp --resume 3f2a                   # continue a session (an id prefix works in
 
 ## The TUI
 
+![The splash screen](images/splash.png)
+
 The splash shows the model, directory, session, and endpoint. Type a prompt
 and press Enter. The answer streams in; reasoning, when the model shows it,
 appears in a dimmed box above it, and each tool call gets a card that fills
@@ -32,8 +34,8 @@ you can write the next message.
 | PgUp / PgDown, Ctrl+U / Ctrl+D, wheel | Scroll |
 | Ctrl+End | Jump to the latest output and follow it |
 | Alt+Left / Alt+Right | Select the previous / next block |
-| Ctrl+O | Expand or collapse the selected tool output or reasoning |
-| Ctrl+Y | Copy the selected block, full tool output included |
+| Ctrl+O | Expand or collapse the selected tool output or reasoning; on an `agent` box, open the sub-agent's chat |
+| Ctrl+Y | Copy the selected block, full tool output included, without control characters |
 | Ctrl+R | Toggle the latest reasoning |
 | → (empty input) | Accept the suggested next message (`--suggest`) |
 | Ctrl+B | Back from a sub-agent chat |
@@ -64,6 +66,8 @@ On a narrow terminal, `/debug` replaces the transcript; `/debug` again
 returns to it. The smallest usable size is 20 × 8.
 
 ## Approvals
+
+![Approving a command](images/approval.gif)
 
 Reading and searching run without asking. Writing files, editing, running
 commands, fetching URLs, and MCP tools that aren't read-only ask first.

@@ -36,9 +36,10 @@ One-shot runs ask on the terminal: `[y] allow  [a] always allow ...  [N] deny`.
   letting the terminal act on them. The TUI box says how many lines are out
   of view.
 - **Writes say where they land.** `write`, `edit`, and `multi_edit` follow
-  symlinks, replacing the target. When the path is a link, the TUI box names
-  the target too (`notes.txt → ~/.bashrc`), so a link in a repository can't
-  pass a write to another file off as a write to itself.
+  symlinks, replacing the target. When the path is a link, the prompt names
+  the target too: the TUI box as `notes.txt → ~/.bashrc`, the terminal
+  prompt of a one-shot run on a line of its own. A link in a repository
+  can't pass a write to another file off as a write to itself.
 
 ## "Always allow"
 
@@ -132,6 +133,11 @@ trusted.
 - **Asking.** wisp asks once, in the terminal, before starting. It lists
   each MCP server's command line or URL, and each agent's endpoint and key
   variable.
+  - Everything listed comes from the repository, so control characters
+    are shown (`␛`), not acted on: an escape sequence could otherwise
+    redraw the lines being reviewed.
+  - The answer is read a byte at a time, up to the end of its line, so
+    what follows on stdin is left for the next prompt.
 - **Remembering.**
   - A "yes" is remembered in `$XDG_STATE_HOME/wisp/state.json`, keyed by
     the project directory, with a hash of those files' names and contents.

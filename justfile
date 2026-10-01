@@ -27,6 +27,10 @@ cover html="":
     @go tool cover -func=coverage.out | tail -1 | tr -s '\t' ' '
     {{ if html != "" { "go tool cover -html=coverage.out" } else { "" } }}
 
+# end-to-end: scripted scenarios against a fake model, and the TUI in a terminal
+e2e:
+    go test ./internal/cli -run 'TestScripts|TestTUIInTerminal' -v
+
 # TUI screen snapshots; pass update=1 to regenerate them after an intended change
 snapshots update="":
     go test ./internal/tui -run 'TestSnapshots|TestScreenFitsAnySize|TestLayoutsFillTheScreen' {{ if update != "" { "-update" } else { "" } }}

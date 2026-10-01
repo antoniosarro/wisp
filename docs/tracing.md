@@ -16,6 +16,11 @@ The page lists every project's sessions, grouped by directory: the one
 wisp was started in first, as "This folder", then the others, most
 recently used first. It follows this folder's newest session as it runs.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/trace-dark.png">
+  <img src="images/trace.png" alt="The trace page: session summary, context chart, span timeline, and span details">
+</picture>
+
 ## Spans
 
 A **span** is one timed piece of work with a parent, shaped like an

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -75,5 +77,46 @@ func TestTerminalPrompterSanitizesTheRuleLabel(t *testing.T) {
 	TerminalPrompter{In: strings.NewReader("n\n"), Out: &out}.Prompt("fetch", args)
 	if strings.Contains(out.String(), "\x1b") {
 		t.Errorf("prompt %q passes an escape character to the terminal", out.String())
+	}
+}
+
+// The file tools follow symlinks, so a write to a link in the project
+// lands in its target, such as ~/.bashrc: the prompt says so, rather than
+// naming only the link.
+func TestTerminalPrompterNamesSymlinkTarget(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "outside", "bashrc")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("export PATH\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "notes.txt")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	prompt := func(name string, args map[string]any) string {
+		t.Helper()
+		raw, _ := json.Marshal(args)
+		var out strings.Builder
+		TerminalPrompter{In: strings.NewReader("n\n"), Out: &out}.Prompt(name, raw)
+		return out.String()
+	}
+
+	for _, name := range []string{"write", "edit", "multi_edit"} {
+		if got := prompt(name, map[string]any{"path": link}); !strings.Contains(got, "the path is a symlink: this writes "+target+"\n") {
+			t.Errorf("%s through a link: prompt %q doesn't name the target", name, got)
+		}
+	}
+	// A plain file, a new one, and a tool that doesn't write get no such line.
+	for name, args := range map[string]map[string]any{
+		"write": {"path": target},
+		"edit":  {"path": filepath.Join(dir, "new.txt")},
+		"read":  {"path": link},
+	} {
+		if got := prompt(name, args); strings.Contains(got, "symlink") {
+			t.Errorf("%s %v: prompt %q mentions a symlink", name, args, got)
+		}
 	}
 }

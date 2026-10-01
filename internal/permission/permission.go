@@ -9,6 +9,7 @@ package permission
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 )
 
 // DeniedContent is the tool result content reported for a denied call.
@@ -62,3 +63,40 @@ type AllowAll struct{}
 
 // Prompt allows.
 func (AllowAll) Prompt(string, json.RawMessage) Decision { return Allow }
+
+// LinkTarget returns the file a write to path lands in when that is another
+// file, or "". The file tools follow symlinks, so a link in a project can
+// aim a write at any file the user can write, such as ~/.bashrc: a prompt
+// that named only the link would hide it.
+func LinkTarget(path string) string {
+	if path == "" {
+		return ""
+	}
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "" // a new file, or a dangling link the tool would fail on
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil || abs == target {
+		return ""
+	}
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil && filepath.Join(dir, filepath.Base(abs)) == target {
+		return "" // only a directory on the way is a link: the file is the one named
+	}
+	return target
+}
+
+// writeTarget is LinkTarget for a call of a file-writing tool, or "" for
+// any other call.
+func writeTarget(name string, args json.RawMessage) string {
+	switch name {
+	case "write", "edit", "multi_edit":
+	default:
+		return ""
+	}
+	var a struct {
+		Path string `json:"path"`
+	}
+	_ = json.Unmarshal(args, &a)
+	return LinkTarget(a.Path)
+}

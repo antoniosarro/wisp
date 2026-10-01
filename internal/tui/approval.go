@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -100,23 +99,12 @@ func writeSummary(path string, a approvalArgs) string {
 	return verb + styleCommand.Render(a.Path) + landsAt(path) + styleDim.Render(" · "+toolMeta(a.Content, 0))
 }
 
-// landsAt names where a write to path lands when that is somewhere else:
-// the file tools follow symlinks, so a link in the project can point a
-// write at any file the user can write, such as ~/.bashrc.
+// landsAt names where a write to path lands when that is another file
+// (permission.LinkTarget).
 func landsAt(path string) string {
-	if path == "" {
+	target := permission.LinkTarget(path)
+	if target == "" {
 		return ""
-	}
-	target, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return "" // a new file, or a dangling link the tool would fail on
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil || abs == target {
-		return ""
-	}
-	if dir, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil && filepath.Join(dir, filepath.Base(abs)) == target {
-		return "" // only a directory on the way is a link: the file is the one named
 	}
 	return styleApprovalTitle.Render(" → " + showControls(displayPath(target, 0)))
 }

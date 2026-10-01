@@ -43,11 +43,12 @@ graph TD
 | `internal/session` | SQLite history, compactions, and spans ([session.md](session.md)) |
 | `internal/span` | Timed, nested spans for tracing ([tracing.md](tracing.md)) |
 | `internal/traceui` | The `--trace` web page |
-| `internal/tui` | The bubbletea frontend |
+| `internal/tui` | The Bubble Tea frontend: the transcript, approvals, commands and pickers, side panels, sub-agent chats, the mouse, and the logo and mascot; its screen snapshots are in `testdata/TestSnapshots` ([usage.md](usage.md)) |
 | `internal/termsafe` | Strips escape sequences from model, tool, and endpoint text before it reaches the terminal |
 | `internal/tokencount` | Local token estimates (cl100k), calibrated against what the endpoint reports |
 | `internal/textfmt` | Cutting text to a size without splitting characters, and byte sizes |
 | `internal/version` | wisp's version, set at link time, and its HTTP User-Agent |
+| `assets` | Files embedded in the binary: the logo and the mascot's sprite strips, with their Aseprite source (`just sprites` exports them) |
 | `internal/testutil` | Fakes for tests: a scripted provider, and (`fakemodel`) a scriptable OpenAI-compatible server for the end-to-end scenarios |
 
 The core loop knows nothing about the terminal, and the TUI holds no agent

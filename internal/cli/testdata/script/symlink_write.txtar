@@ -1,0 +1,24 @@
+# A write to a symlink in the project would land in its target: the
+# one-shot prompt names that file, and a denial leaves it as it was.
+
+mkdir outside
+cp bashrc outside/bashrc
+symlink notes.txt -> outside/bashrc
+fakemodel model.yaml
+stdin answers.txt
+exec wisp 'save a note'
+stdout 'wisp wants to run: write'
+stdout 'the path is a symlink: this writes .*outside[/\\]bashrc'
+stdout 'The write was denied\.'
+cmp outside/bashrc bashrc
+
+-- bashrc --
+export PATH
+-- answers.txt --
+n
+-- model.yaml --
+rules:
+  - when: {role: user}
+    reply: {tool_calls: [{name: write, args: {path: notes.txt, content: "rm -rf ~\n"}}]}
+  - when: {contains: denied by user}
+    reply: {text: "The write was denied."}

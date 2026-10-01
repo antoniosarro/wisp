@@ -222,6 +222,9 @@ func checkScreen(t testing.TB, view string, w, h int) {
 		}
 	}
 	first, last := lines[0], lines[len(lines)-1]
+	if len(lines) > 1 && strings.HasPrefix(strings.TrimRight(lines[len(lines)-2], " "), "╰") && !strings.HasPrefix(last, "╰") {
+		last = lines[len(lines)-2] // the statusline row sits under the frame
+	}
 	if !strings.HasPrefix(first, "╭") || !strings.HasPrefix(last, "╰") || !strings.HasSuffix(strings.TrimRight(last, " "), "╯") {
 		t.Errorf("%dx%d: outer frame cut: first line %q, last line %q\n%s", w, h, first, last, ansi.Strip(view))
 	}

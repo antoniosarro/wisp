@@ -1,13 +1,12 @@
 ╭──────────────────────────────────────────╮╭──────────────────────────────────╮
-│ Directory                                ││ Agents 1 active                  │
-│ ● /home/user/project                     ││                                  │
-│                                          ││ ✓ reviewer · 4.0s                │
-│ Session                                  ││   review client.go               │
-│ ● test-session                           ││   0 tool calls · 1500 tokens     │
+│ ● /home/user/project                     ││ Agents 1 active                  │
 │                                          ││                                  │
-│ Endpoint                                 ││ ⣾ explorer · 1.5s                │
-│ ● http://localhost:8091/v1               ││   find retry logic               │
-│                                          ││                                  │
+│ Session                                  ││ ✓ reviewer · 4.0s                │
+│ ● test-session                           ││   review client.go               │
+│                                          ││   0 tool calls · 1500 tokens     │
+│ Endpoint                                 ││                                  │
+│ ● http://localhost:8091/v1               ││ ⣾ explorer · 1.5s                │
+│                                          ││   find retry logic               │
 │ F1 or /help for controls                 ││                                  │
 │ ──────────────────────────────────────   ││                                  │
 │                                          ││                                  │
@@ -22,3 +21,4 @@
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ > ask wisp...                                                                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
+ fast-agent · /home/user/project                                                

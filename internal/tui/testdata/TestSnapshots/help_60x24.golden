@@ -16,9 +16,9 @@
 │   a selection; Ctrl+C clears the input, and twice        │
 │   exits.                                                 │
 │   PgUp/PgDown scroll; Ctrl+End follows the latest        │
-│   output.                                                │
 │                                           -  wisp is idle│
 ╰─ esc to close · pgup/pgdown scroll ──────────────────────╯
 ╭──────────────────────────────────────────────────────────╮
 │ > ask wisp...                                            │
 ╰──────────────────────────────────────────────────────────╯
+ fast-agent · /home/user/project                            

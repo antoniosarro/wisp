@@ -1,33 +1,32 @@
 ╭──────────────────────────────────────────────────────────────────────────────────╮╭──────────────────────────────────╮
-│                    Model                                                         ││ Debug                            │
-│                    ● fast-agent                                                  ││ ● fast-agent                     │
-│                      32K context · $3.00/$15.00 per 1M                           ││                                  │
-│    ▄██████▄                                                                      ││ Tokens      last      session    │
-│   ██  ██  ██       Directory                                                     ││ prompt      12000     30000      │
-│   ████╭─────╮      ● /home/user/project                                          ││   system    ~900                 │
-│   ████│ >_  │ ━━                                                                 ││   history   ~11000               │
-│   █▀█▀╰─────╯ ━    Session                                                       ││   tool defs ~1500                │
-│        ▝▘          ● test-session                                                ││ cache hit   75%       66.7%      │
-│   █ ▄ █▐▌▄▀▀▐▛▚▖                                                                 ││ completion  800       2000       │
-│   ▀▄▀▄▀▐▌▄▄▀▐▛▘    Endpoint                                                      ││   answer    ~700                 │
-│                    ● http://localhost:8091/v1                                    ││                                  │
-│                                                                                  ││ Context                          │
-│                    F1 or /help for controls                                      ││ window      32.8K                │
-│ ──────────────────────────────────────────────────────────────────────────────   ││   fixed     2.6K                 │
-│                                                                                  ││   history   26.1K budget         │
-│   ▌ what does the loop do?                                                       ││ used        █████░░░░░░░░░ 36%   │
-│                                                                                  ││ mask at     15.6K                │
-│   ▸ Thought for 6 words · 1.5s                                                   ││ summarize   at 22.2K             │
-│                                                                                  ││ estimates   ×1.08                │
-│     ╭────────────────────────────────────────────────────────────────────────╮   ││ masked      4 outputs            │
-│     │ ✓ read internal/core/loop.go · 3 lines                                 │   ││                                  │
-│     ╰────────────────────────────────────────────────────────────────────────╯   ││ Cost (est.)                      │
-│                                                                                  ││ spent       $0.048    $0.048     │
-│     ╭────────────────────────────────────────────────────────────────────────╮   ││ $3.00 in · $15.00 out per 1M     │
-│     │ ✗ bash go vet ./... · 2 lines  loop.go:12: unreachable code            │   ││                                  │
-│     ╰────────────────────────────────────────────────────────────────────────╯   ││ Performance                      │
-│                                                                                  ││ 266.7 tok/s · 3s · 4 req         │
-│   ● The loop streams a response, runs the tools it asks for, and repeats.        ││                                  │
+│                    ● fast-agent                                                  ││ Debug                            │
+│                      32K context · $3.00/$15.00 per 1M                           ││ ● fast-agent                     │
+│    ▄██████▄                                                                      ││                                  │
+│   ██  ██  ██       Directory                                                     ││ Tokens      last      session    │
+│   ████╭─────╮      ● /home/user/project                                          ││ prompt      12000     30000      │
+│   ████│ >_  │ ━━                                                                 ││   system    ~900                 │
+│   █▀█▀╰─────╯ ━    Session                                                       ││   history   ~11000               │
+│        ▝▘          ● test-session                                                ││   tool defs ~1500                │
+│   █ ▄ █▐▌▄▀▀▐▛▚▖                                                                 ││ cache hit   75%       66.7%      │
+│   ▀▄▀▄▀▐▌▄▄▀▐▛▘    Endpoint                                                      ││ completion  800       2000       │
+│                    ● http://localhost:8091/v1                                    ││   answer    ~700                 │
+│                                                                                  ││                                  │
+│                    F1 or /help for controls                                      ││ Context                          │
+│ ──────────────────────────────────────────────────────────────────────────────   ││ window      32.8K                │
+│                                                                                  ││   fixed     2.6K                 │
+│   ▌ what does the loop do?                                                       ││   history   26.1K budget         │
+│                                                                                  ││ used        █████░░░░░░░░░ 36%   │
+│   ▸ Thought for 6 words · 1.5s                                                   ││ mask at     15.6K                │
+│                                                                                  ││ summarize   at 22.2K             │
+│     ╭────────────────────────────────────────────────────────────────────────╮   ││ estimates   ×1.08                │
+│     │ ✓ read internal/core/loop.go · 3 lines                                 │   ││ masked      4 outputs            │
+│     ╰────────────────────────────────────────────────────────────────────────╯   ││                                  │
+│                                                                                  ││ Cost (est.)                      │
+│     ╭────────────────────────────────────────────────────────────────────────╮   ││ spent       $0.048    $0.048     │
+│     │ ✗ bash go vet ./... · 2 lines  loop.go:12: unreachable code            │   ││ $3.00 in · $15.00 out per 1M     │
+│     ╰────────────────────────────────────────────────────────────────────────╯   ││                                  │
+│                                                                                  ││ Performance                      │
+│   ● The loop streams a response, runs the tools it asks for, and repeats.        ││ 266.7 tok/s · 3s · 4 req         │
 │     ╭────────────────────────────────────────────────────────────────────────╮   ││                                  │
 │     │ go                                                                     │   ││                                  │
 │     │ for i := 0; i < maxIter; i++ {                                         │   ││                                  │
@@ -38,3 +37,4 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ > ask wisp...                                                                                                        │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ fast-agent · /home/user/project · ctx 36% · $0.05                                                                      

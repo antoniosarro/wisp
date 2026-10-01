@@ -139,7 +139,8 @@ func TestTUIInTerminal(t *testing.T) {
 
 	screen := term.screen.String()
 	lines := strings.Split(strings.TrimRight(screen, "\n"), "\n")
-	if len(lines) > 30 || !strings.HasPrefix(strings.TrimSpace(lines[len(lines)-1]), "╰") {
+	// the statusline is the last row
+	if len(lines) > 30 || len(lines) < 2 || !strings.HasPrefix(strings.TrimSpace(lines[len(lines)-2]), "╰") {
 		t.Errorf("the input box is not at the bottom of the screen:\n%s", screen)
 	}
 

@@ -185,11 +185,11 @@ func TestMascotOverlaysView(t *testing.T) {
 	check := func(name string) {
 		t.Helper()
 		lines := strings.Split(stripANSI(m.View()), "\n")
-		row := lines[len(lines)-5] // above the main box's bottom border and the 3-row input box
+		row := lines[len(lines)-6] // above the main box's bottom border, the 3-row input box and the statusline
 		if !strings.HasSuffix(row, "wisp is idle│") {
 			t.Fatalf("%s: mascot not in the bottom-right corner: %q", name, row)
 		}
-		if !strings.HasPrefix(lines[len(lines)-4], "╰") || !strings.HasPrefix(lines[len(lines)-3], "╭") {
+		if !strings.HasPrefix(lines[len(lines)-5], "╰") || !strings.HasPrefix(lines[len(lines)-4], "╭") {
 			t.Fatalf("%s: borders broken:\n%s", name, strings.Join(lines, "\n"))
 		}
 		for _, l := range lines {
@@ -269,7 +269,7 @@ func TestImageMascotOverlay(t *testing.T) {
 	if strings.Contains(strings.Join(lines, "\n"), "wisp is") {
 		t.Fatal("image mascot captioned")
 	}
-	bottom := len(lines) - 4 // the main box's bottom border
+	bottom := len(lines) - 5 // the main box's bottom border
 	for _, l := range lines[bottom-mascotRows : bottom] {
 		i := strings.IndexRune(l, placeholder)
 		if at := ansi.StringWidth(l[:max(i, 0)]); i < 0 || at != 100-1-mascotCols {

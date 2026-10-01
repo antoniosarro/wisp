@@ -16,9 +16,9 @@
 │   Alt+Left/Right selects transcript blocks; Ctrl+O expands/collapses, or     │
 │   opens a sub-agent's own chat from its box.                                 │
 │   Ctrl+R toggles the latest reasoning block.                                 │
-│   Mouse: hover marks the block a click will hit; click a tool or reasoning   │
 │                                                               -  wisp is idle│
 ╰─ esc to close · pgup/pgdown scroll ──────────────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ > ask wisp...                                                                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
+ fast-agent · /home/user/project                                                

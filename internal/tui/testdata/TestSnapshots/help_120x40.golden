@@ -32,9 +32,9 @@
 │   Ctrl+B or /back returns to the main chat from a sub-agent's.                                                       │
 │   Side panels stack on the right; on narrow terminals the tasks stay in the chat and /debug replaces the             │
 │   transcript.                                                                                                        │
-│                                                                                                                      │
 │                                                                                                       -  wisp is idle│
 ╰─ esc to close · pgup/pgdown scroll ──────────────────────────────────────────────────────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ > ask wisp...                                                                                                        │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ fast-agent · /home/user/project                                                                                        

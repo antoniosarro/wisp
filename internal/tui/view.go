@@ -317,9 +317,9 @@ func (m *Model) footer() string {
 		return m.renderApproval(true)
 	}
 	if popup := m.renderCommandPopup(); popup != "" {
-		return popup + "\n" + renderInputBox(m.input.View(), m.width)
+		return popup + "\n" + renderInputBox(m.input.View(), m.width) + m.statuslineRow()
 	}
-	return renderInputBox(m.input.View(), m.width)
+	return renderInputBox(m.input.View(), m.width) + m.statuslineRow()
 }
 
 // chatBox frames the transcript, or the overlay over it, with any notice

@@ -16,9 +16,9 @@
 │   fixed     2.6K                 │                        
 │   history   26.1K budget         │                        
 │ used        █████░░░░░░░░░ 36%   │                        
-│ mask at     15.6K                │                        
-│ summarize   at 22.2K             │        -  wisp is idle 
-│ estimates   ×1.08                │                        
+│ mask at     15.6K                │        -  wisp is idle 
+│ summarize   at 22.2K             │                        
 ╭──────────────────────────────────────────────────────────╮
 │ > ask wisp...                                            │
 ╰──────────────────────────────────────────────────────────╯
+ fast-agent · /home/user/project · ctx 36% · $0.05          

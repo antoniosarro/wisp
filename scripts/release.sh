@@ -31,14 +31,17 @@ git diff --quiet || echo "release: note: unstaged changes are not part of the re
 last=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
 range="${last:+$last..}HEAD"
 [[ -z $last || -n $(git rev-list "$range") ]] || die "no commits since $last"
+# --no-show-signature: log.showSignature would add gpg's lines. No pipe
+# into head for git log: with pipefail, git killed by SIGPIPE fails the
+# script; the diff's cut-off is the exception, allowed to.
 if [[ -n $last ]]; then
-    changes="$(git log --no-merges --format='- %s' "$range")
+    changes="$(git log --no-show-signature --no-merges --format='- %s' "$range")
 
 $(git diff --stat "$last" HEAD | tail -40)
 
-$(git diff "$last" HEAD -- . ':!*.png' ':!go.sum' | head -c 80000)"
+$(git diff "$last" HEAD -- . ':!*.png' ':!*.gif' ':!go.sum' | head -c 80000 || true)"
 else
-    changes="$(git log --no-merges --format='- %s' | head -100)"
+    changes="$(git log --no-show-signature --no-merges --format='- %s' -n 100)"
 fi
 
 # 3. Ask wisp for the bump and the notes. The key flag keeps any

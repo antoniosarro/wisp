@@ -35,6 +35,15 @@ snapshots update="":
 fuzz time="30s":
     go test ./internal/tui -run '^$' -fuzz FuzzScreenFits -fuzztime {{time}}
 
+# screenshot or GIF of the real TUI: just screenshot OUT.png|OUT.gif [STEP...] (scripts/screenshot.sh)
+[positional-arguments]
+screenshot *args:
+    ./scripts/screenshot.sh "$@"
+
+# tag a release: wisp on a local model suggests the version and notes (scripts/release.sh)
+release:
+    ./scripts/release.sh
+
 # write a Conventional Commits message for the staged changes with the local model (scripts/commit-msg.sh), then review it in git's editor
 commit:
     @msg="$(scripts/commit-msg.sh)" && git commit --edit -m "$msg"

@@ -1,0 +1,37 @@
+# Publishes a GitHub release for each pushed v* tag: the Linux packages,
+# with the tag's message as the notes. scripts/release.sh makes the tag;
+# the published release is what turns on wisp's update notice.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the tags, for the version (packaging/justfile)
+
+      # checkout leaves the pushed tag lightweight; fetch it again to get
+      # its message.
+      - run: git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Build the packages
+        run: nix develop -c just pkg all
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The tag's message, without its signature.
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/^-----BEGIN .* SIGNATURE-----$/,$d' > notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" \
+            --notes-file notes.md dist/*.deb dist/*.pkg.tar.zst

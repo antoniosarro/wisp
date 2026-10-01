@@ -32,8 +32,15 @@
             golangci-lint
             gotools
             just
-            jq
             nfpm # .deb and Arch packages: just pkg deb, just pkg archlinux
+            grim # screenshots a real Wayland window for visual TUI QA
+            slurp # region selection (unused directly, grim's usual companion)
+            wtype # injects keystrokes into a real window for TUI QA
+            jq # formats test results (scripts/test.jq); parses hyprctl's window geometry JSON
+            wf-recorder # records a window for GIFs in the docs (scripts/screenshot.sh)
+            ffmpeg-headless # splits the recording into frames
+            gifski # encodes the frames as a small, sharp GIF
+            sqlite # scripts/screenshot.sh reads the session's spans to know when a turn ends
           ];
         };
 

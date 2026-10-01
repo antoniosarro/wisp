@@ -50,9 +50,9 @@ On launch, wisp asks GitHub for the newest release
 (`api.github.com/repos/antoniosarro/wisp/releases/latest`, at most once a
 day, in the background) and, if it is newer, shows "Update available" on
 the splash. Only builds made at or past a tag check: `dev`, pseudo-versions
-before the first tag, Nix builds
-(`0.0.0-<rev>`: flakes can't see tags, and Nix updates come from
-`nix flake update`), and packages from before the first tag never do. A
+before the first tag, and packages from before the first tag never do. Nix
+builds report the version in `VERSION` (flakes can't see tags), which
+`scripts/release.sh` sets in the commit it tags. A
 tag alone isn't a release: the notice appears once the release is
 published.
 

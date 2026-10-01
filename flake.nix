@@ -13,8 +13,10 @@
       flake-utils,
     }:
     let
-      # Packaging lives in packaging/ (packaging/README.md).
-      version = "0.0.0-" + (self.shortRev or self.dirtyShortRev or "dev");
+      # Packaging lives in packaging/ (packaging/README.md). Flakes can't see
+      # git tags, so the version comes from VERSION, which scripts/release.sh
+      # sets in the commit it tags.
+      version = nixpkgs.lib.trim (builtins.readFile ./VERSION);
       wisp = pkgs: pkgs.callPackage ./packaging/nix/package.nix { inherit version; };
     in
     flake-utils.lib.eachDefaultSystem (

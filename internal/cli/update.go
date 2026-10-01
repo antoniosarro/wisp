@@ -19,9 +19,9 @@ var releaseURL = "https://api.github.com/repos/antoniosarro/wisp/releases/latest
 // newerRelease returns the version of a release newer than current, or "".
 // It asks GitHub at most once a day and remembers the answer in the state
 // file; failing to ask (offline, no releases yet) just shows nothing.
-// Builds not made from a release tag (go run's "dev", Nix's 0.0.0-<rev>,
-// go build's and packages' 0.0.0 versions before the first tag) never
-// check: there is nothing to compare.
+// Builds not made from a release tag (go run's "dev", go build's and
+// packages' 0.0.0 versions before the first tag) never check: there is
+// nothing to compare.
 func newerRelease(ctx context.Context, current string) string {
 	cur := releaseParts(current)
 	if !slices.ContainsFunc(cur, func(n int) bool { return n != 0 }) {

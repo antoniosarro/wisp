@@ -99,7 +99,10 @@ if ask "Edit the release notes first?"; then
     "${EDITOR:-vi}" "$notes"
 fi
 
-# 5. Tag (signed when git's tag.gpgSign is set), then the outward steps.
+# 5. VERSION (what the Nix flake reports) into its own commit, then tag it
+# (signed when git's tag.gpgSign is set), then the outward steps.
+echo "$version" > VERSION
+git commit -q -m "chore(release): v$version" -- VERSION
 git tag -a "v$version" --cleanup=verbatim -F "$notes" # keeps "# Heading" lines
 echo "Tagged v$version at $(git rev-parse --short HEAD)."
 

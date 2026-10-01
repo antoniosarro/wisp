@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="assets/logo.png" alt="wisp" width="160">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
+    <img src="assets/logo.png" alt="wisp" width="160">
+  </picture>
 </p>
 
 <p align="center">

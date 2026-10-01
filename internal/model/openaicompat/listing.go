@@ -38,7 +38,11 @@ type listEntry struct {
 		OutputModalities []string `json:"output_modalities"`
 	} `json:"architecture"` // OpenRouter
 	SupportedParameters []string `json:"supported_parameters"` // OpenRouter
-	TopProvider         *struct {
+	Reasoning           *struct {
+		Mandatory        bool     `json:"mandatory"` // reasoning can't be turned off
+		SupportedEfforts []string `json:"supported_efforts"`
+	} `json:"reasoning"` // OpenRouter
+	TopProvider *struct {
 		ContextLength       int `json:"context_length"`
 		MaxCompletionTokens int `json:"max_completion_tokens"`
 	} `json:"top_provider"` // OpenRouter
@@ -71,11 +75,30 @@ func (e listEntry) info() model.Info {
 	if e.SupportedParameters != nil {
 		info.Tools = supportIf(slices.Contains(e.SupportedParameters, "tools"))
 		info.Reasoning = supportIf(slices.Contains(e.SupportedParameters, "reasoning"))
+		info.Efforts = e.efforts(info.Reasoning == model.Supported)
 	}
 	if p := e.Pricing; p != nil {
 		info.Price = p.pricing()
 	}
 	return info
+}
+
+// efforts is the reasoning effort levels OpenRouter lists for the model,
+// with "none" where reasoning can be turned off. A reasoning model listed
+// without its reasoning details stays unknown.
+func (e listEntry) efforts(reasons bool) model.Efforts {
+	r := e.Reasoning
+	switch {
+	case !reasons:
+		return model.EffortsReported
+	case r == nil:
+		return 0
+	}
+	efforts := model.EffortsReported | model.EffortsOf(r.SupportedEfforts...)
+	if !r.Mandatory {
+		efforts |= model.EffortsOf("none")
+	}
+	return efforts
 }
 
 // tokenPrices is OpenRouter's price of a model or endpoint: US dollars per

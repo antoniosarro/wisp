@@ -16,8 +16,8 @@ type Provider interface {
 ```
 
 - **`Request`** carries the conversation (`Messages`), the tool schemas, and
-  per-request controls: `ToolChoice`, `MaxTokens`, `NoReasoning`, and a
-  `ReasoningTokens` budget.
+  per-request controls: `ToolChoice`, `MaxTokens`, `NoReasoning`, a
+  `ReasoningTokens` budget, and an `Effort` level.
 - **`Event`** is one unit of the streamed response. Its `Kind` is one of
   `TextDelta`, `ReasoningDelta`, `ToolCall`, `Done` (with `Usage` and
   `Truncated`), `Error`, or `Reclassify`, which says the text streamed so far
@@ -51,7 +51,11 @@ Ollama, LM Studio) and hosted OpenAI-compatible APIs such as OpenRouter.
 - **Reasoning.** `NoReasoning` becomes `reasoning.enabled=false` on
   OpenRouter and `chat_template_kwargs` (`enable_thinking` and `thinking`
   set to false) elsewhere. A `ReasoningTokens` budget is only sent to
-  OpenRouter; other servers leave reasoning to the model.
+  OpenRouter; other servers leave reasoning to the model. An `Effort`
+  level becomes `reasoning.effort` on OpenRouter and `reasoning_effort`
+  elsewhere. A local server also gets it in `chat_template_kwargs`, as
+  `reasoning_effort`, or for `none` as the variables that turn thinking
+  off. `NoReasoning` wins over an `Effort`.
 - **Retries.** A request that fails before streaming starts (dropped or
   refused connection, 429, 5xx) is retried up to 3 times, after 1 s, 2 s,
   and 4 s. A longer `Retry-After` (in seconds) is honored, up to 60 s.
@@ -126,7 +130,8 @@ type Catalog interface {
 maximum, the output cap, tool, vision, and reasoning support (unknown,
 supported, or unsupported), load state, whether it is an embedding model,
 whether the server is local (loopback, private, Tailscale, or LAN host), and
-its price per 1M tokens. Zero values mean the server didn't say.
+its price per 1M tokens, and the reasoning effort levels it takes. Zero
+values mean the server didn't say.
 
 - **Listing.** `/models` carries only ids in the OpenAI spec, but servers
   add fields of their own:
@@ -134,8 +139,8 @@ its price per 1M tokens. Zero values mean the server didn't say.
   - llama.cpp: `meta.n_ctx_train` and a `models[].capabilities` list
   - llama-swap: `meta.llamaswap.context_length`
   - OpenRouter: `context_length`, `architecture` modalities,
-    `supported_parameters`, `top_provider.max_completion_tokens`, and
-    `pricing`
+    `supported_parameters`, `reasoning`, `top_provider.max_completion_tokens`,
+    and `pricing`
 
   OpenRouter prices are in dollars per token and are converted to per
   million. Its `-1`, used for variable-price routers, means unknown. The
@@ -147,10 +152,18 @@ its price per 1M tokens. Zero values mean the server didn't say.
   - Ollama: `/api/ps`
   - llama.cpp: `/props`, only for a server with one model
 
-  `Describe` also asks llama.cpp `/props` and Ollama `/api/show`. Probes
+  `Describe` also asks llama.cpp `/props`, Ollama `/api/show`, and, on
+  llama-swap, the running model's `/upstream/ID/props` (never a model
+  that isn't running: asking would load it). Probes
   run concurrently, and a failed probe is skipped. A GET answered with 404,
   405, or 501 is never asked again, because every server 404s the others'
   endpoints.
+- **Reasoning effort levels.** llama.cpp's `/props` reports whether the
+  chat template takes `reasoning_effort` (then `low`, `medium`, `high`), and
+  a template reading `enable_thinking` can turn reasoning off (`none`).
+  OpenRouter's listing gives each reasoning model's `reasoning` details:
+  its `supported_efforts`, and `none` unless reasoning is `mandatory`.
+  Levels wisp doesn't know are dropped.
 - **Context window.** `ContextWindow` is only what the server applies per
   request. For Ollama, that is the loaded context or the model's `num_ctx`,
   never the trained maximum, which Ollama would silently truncate to its

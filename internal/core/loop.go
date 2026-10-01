@@ -63,6 +63,7 @@ type Loop struct {
 	MaxOutput     int           // model's output-token cap; 0 if unknown
 	Price         model.Pricing // the model's list price, for requests the endpoint doesn't bill
 	NoTools       bool          // the model can't call tools: send none
+	Effort        string        // reasoning effort level; "" leaves it to the model
 	AutoCompact   bool          // summarize history when it nears the window
 	// Presummarize generates the next summary in the background between
 	// turns. Worth it where idle time is free: a local, interactive model.
@@ -339,7 +340,7 @@ func (l *Loop) stepFitting(ctx context.Context, toolChoice string) (string, []mo
 // is sent only with tools: "none" forbids calls, "" leaves it to the model.
 // The request is traced as a span of the turn (trace.go).
 func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model.ToolCall, truncated bool, err error) {
-	req := model.Request{Messages: l.Messages(), Tools: l.requestTools()}
+	req := model.Request{Messages: l.Messages(), Tools: l.requestTools(), Effort: l.Effort}
 	if req.Tools != nil {
 		req.ToolChoice = toolChoice
 	}

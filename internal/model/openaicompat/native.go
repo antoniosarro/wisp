@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -74,36 +75,80 @@ func (c *Client) probeAll(ctx context.Context, probes ...func(context.Context) [
 }
 
 // llamaProps reads llama.cpp's /props: the per-slot context the server
-// runs with, and its modalities. It describes the loaded model, so it only
-// counts for id when that is the one served (only) or matches the model
-// file.
+// runs with, its modalities, and what its chat template supports. It
+// describes the loaded model, so it only counts for id when that is the
+// one served (only) or matches the model file.
 func (c *Client) llamaProps(ctx context.Context, id string, only bool) []model.Info {
-	var p struct {
-		ModelPath string `json:"model_path"`
-		Settings  struct {
-			NCtx int `json:"n_ctx"`
-		} `json:"default_generation_settings"`
-		Modalities *struct {
-			Vision bool `json:"vision"`
-		} `json:"modalities"`
-		TemplateCaps *struct {
-			SupportsToolCalls *bool `json:"supports_tool_calls"`
-		} `json:"chat_template_caps"`
-	}
+	var p propsResponse
 	if c.probe(ctx, http.MethodGet, "/props", nil, &p) != nil || p.Settings.NCtx == 0 {
 		return nil
 	}
 	if !only && !strings.Contains(p.ModelPath, id) {
 		return nil
 	}
-	info := model.Info{ID: id, ContextWindow: p.Settings.NCtx, Loaded: true}
+	return []model.Info{p.info(id)}
+}
+
+// llamaSwapProps reads the /props of the llama.cpp server llama-swap runs
+// for id, once it is running: asking any sooner would load the model.
+func (c *Client) llamaSwapProps(ctx context.Context, id string) []model.Info {
+	list, err := c.list(ctx)
+	if err != nil || !slices.ContainsFunc(list.Data, func(e listEntry) bool { return e.OwnedBy == "llama-swap" }) {
+		return nil
+	}
+	var r struct {
+		Running []struct{ Model, State string } `json:"running"`
+	}
+	if c.probe(ctx, http.MethodGet, "/running", nil, &r) != nil ||
+		!slices.Contains(r.Running, struct{ Model, State string }{id, "ready"}) {
+		return nil
+	}
+	var p propsResponse
+	if c.probe(ctx, http.MethodGet, "/upstream/"+url.PathEscape(id)+"/props", nil, &p) != nil || p.Settings.NCtx == 0 {
+		return nil
+	}
+	return []model.Info{p.info(id)}
+}
+
+// propsResponse is llama.cpp's /props, with only what wisp reads.
+type propsResponse struct {
+	ModelPath string `json:"model_path"`
+	Settings  struct {
+		NCtx int `json:"n_ctx"`
+	} `json:"default_generation_settings"`
+	Modalities *struct {
+		Vision bool `json:"vision"`
+	} `json:"modalities"`
+	ChatTemplate string `json:"chat_template"`
+	TemplateCaps *struct {
+		SupportsToolCalls       *bool `json:"supports_tool_calls"`
+		SupportsReasoningEffort bool  `json:"supports_reasoning_effort"`
+	} `json:"chat_template_caps"`
+}
+
+// info describes the loaded model as id. A template that reads
+// reasoning_effort (gpt-oss) takes OpenAI's three levels; one that reads
+// enable_thinking can turn reasoning off; any other takes no level.
+func (p propsResponse) info(id string) model.Info {
+	info := model.Info{ID: id, ContextWindow: p.Settings.NCtx, Loaded: true, Efforts: model.EffortsReported}
 	if p.Modalities != nil {
 		info.Vision = supportIf(p.Modalities.Vision)
 	}
-	if t := p.TemplateCaps; t != nil && t.SupportsToolCalls != nil {
-		info.Tools = supportIf(*t.SupportsToolCalls)
+	if t := p.TemplateCaps; t != nil {
+		if t.SupportsToolCalls != nil {
+			info.Tools = supportIf(*t.SupportsToolCalls)
+		}
+		if t.SupportsReasoningEffort {
+			info.Efforts |= model.EffortsOf("low", "medium", "high")
+		}
 	}
-	return []model.Info{info}
+	if strings.Contains(p.ChatTemplate, "enable_thinking") {
+		info.Efforts |= model.EffortsOf("none")
+	}
+	if len(info.Efforts.Levels()) > 0 {
+		info.Reasoning = model.Supported
+	}
+	return info
 }
 
 // numCtxParam finds num_ctx in Ollama's Modelfile parameters, one per line.

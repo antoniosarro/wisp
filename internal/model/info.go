@@ -25,6 +25,7 @@ type Info struct {
 	Tools         Support
 	Vision        Support
 	Reasoning     Support
+	Efforts       Efforts // reasoning effort levels it accepts
 	Loaded        bool    // in memory now (local servers)
 	Embedding     bool    // not a chat model
 	Local         bool    // served on this machine or network: no per-token bill
@@ -54,6 +55,9 @@ func (i Info) Summary() string {
 		if flag.on {
 			parts = append(parts, flag.name)
 		}
+	}
+	if levels := i.Efforts.Levels(); len(levels) > 0 {
+		parts = append(parts, "effort "+strings.Join(levels, "/"))
 	}
 	if i.Price.Known {
 		parts = append(parts, fmt.Sprintf("$%s/$%s per 1M", rate(i.Price.Input), rate(i.Price.Output)))

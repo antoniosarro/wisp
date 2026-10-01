@@ -31,12 +31,44 @@ func TestDescribeByServer(t *testing.T) {
 				"GET /props":     `{"model_path":"/m/q.gguf","default_generation_settings":{"n_ctx":16384},"chat_template_caps":{"supports_tool_calls":true}}`,
 			},
 			id:   "q.gguf",
-			want: model.Info{ID: "q.gguf", ContextWindow: 16384, MaxContext: 131072, Tools: model.Supported, Vision: model.Supported, Loaded: true},
+			want: model.Info{ID: "q.gguf", ContextWindow: 16384, MaxContext: 131072, Tools: model.Supported, Vision: model.Supported, Efforts: model.EffortsReported, Loaded: true},
 		},
 		{
 			name: "llama-swap",
 			routes: map[string]string{
 				"GET /v1/models": `{"data":[{"id":"coder-35b","owned_by":"llama-swap","meta":{"llamaswap":{"context_length":131072}}}]}`,
+			},
+			id:   "coder-35b",
+			want: model.Info{ID: "coder-35b", ContextWindow: 131072},
+		},
+		{
+			name: "llama.cpp with a reasoning template",
+			routes: map[string]string{
+				"GET /v1/models": `{"data":[{"id":"gpt-oss","owned_by":"llamacpp"}]}`,
+				"GET /props": `{"model_path":"/m/gpt-oss.gguf","default_generation_settings":{"n_ctx":8192},
+					"chat_template":"{%- if enable_thinking is defined -%}","chat_template_caps":{"supports_reasoning_effort":true}}`,
+			},
+			id:   "gpt-oss",
+			want: model.Info{ID: "gpt-oss", ContextWindow: 8192, Reasoning: model.Supported, Efforts: model.EffortsReported | model.EffortsOf("none", "low", "medium", "high"), Loaded: true},
+		},
+		{
+			name: "llama-swap, model running",
+			routes: map[string]string{
+				"GET /v1/models": `{"data":[{"id":"coder-35b","owned_by":"llama-swap","meta":{"llamaswap":{"context_length":131072}}}]}`,
+				"GET /running":   `{"running":[{"model":"other","state":"ready"},{"model":"coder-35b","state":"ready"}]}`,
+				"GET /upstream/coder-35b/props": `{"default_generation_settings":{"n_ctx":131072},
+					"chat_template":"enable_thinking","chat_template_caps":{"supports_tool_calls":true}}`,
+			},
+			id:   "coder-35b",
+			want: model.Info{ID: "coder-35b", ContextWindow: 131072, Tools: model.Supported, Reasoning: model.Supported, Efforts: model.EffortsReported | model.EffortsOf("none"), Loaded: true},
+		},
+		{
+			// Asking its server would load it.
+			name: "llama-swap, model not running",
+			routes: map[string]string{
+				"GET /v1/models":                `{"data":[{"id":"coder-35b","owned_by":"llama-swap","meta":{"llamaswap":{"context_length":131072}}}]}`,
+				"GET /running":                  `{"running":[{"model":"coder-35b","state":"starting"}]}`,
+				"GET /upstream/coder-35b/props": `{"default_generation_settings":{"n_ctx":131072},"chat_template_caps":{"supports_tool_calls":true}}`,
 			},
 			id:   "coder-35b",
 			want: model.Info{ID: "coder-35b", ContextWindow: 131072},
@@ -71,6 +103,15 @@ func TestDescribeByServer(t *testing.T) {
 			id: "deepseek/v3",
 			want: model.Info{ID: "deepseek/v3", ContextWindow: 163840, MaxOutput: 65536, Tools: model.Supported, Vision: model.Unsupported, Reasoning: model.Supported,
 				Price: model.Pricing{Known: true, Input: 0.27, Output: 1.1, CachedInput: 0.07}},
+		},
+		{
+			name: "OpenRouter reasoning levels",
+			routes: map[string]string{"GET /v1/models": `{"data":[
+				{"id":"a/must-think","supported_parameters":["tools","reasoning"],"reasoning":{"mandatory":true,"supported_efforts":["max","high","low","ultra"]}},
+				{"id":"a/may-think","supported_parameters":["tools","reasoning"],"reasoning":{"mandatory":false,"default_enabled":true}},
+				{"id":"a/no-think","supported_parameters":["tools"],"reasoning":{"mandatory":false}}]}`},
+			id:   "a/must-think",
+			want: model.Info{ID: "a/must-think", Tools: model.Supported, Reasoning: model.Supported, Efforts: model.EffortsReported | model.EffortsOf("low", "high", "max")},
 		},
 		{
 			name:   "plain OpenAI",

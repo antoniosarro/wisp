@@ -101,18 +101,24 @@ func TestReasoningControls(t *testing.T) {
 		baseURL     string
 		noReasoning bool
 		budget      int
+		effort      string
 		want        string // "" means no reasoning fields at all
 	}{
-		{"off through the chat template", "http://localhost:8091/v1", true, 0, `"chat_template_kwargs":{"enable_thinking":false,"thinking":false}`},
-		{"off on OpenRouter", "http://openrouter.ai/api/v1", true, 0, `"reasoning":{"enabled":false}`},
-		{"budget on OpenRouter", "http://openrouter.ai/api/v1", false, 3000, `"reasoning":{"max_tokens":3000}`},
-		{"budget elsewhere is not sent", "http://localhost:8091/v1", false, 3000, ""},
-		{"default", "http://localhost:8091/v1", false, 0, ""},
+		{"off through the chat template", "http://localhost:8091/v1", true, 0, "", `"chat_template_kwargs":{"enable_thinking":false,"thinking":false}`},
+		{"off on OpenRouter", "http://openrouter.ai/api/v1", true, 0, "", `"reasoning":{"enabled":false}`},
+		{"off wins over an effort", "http://openrouter.ai/api/v1", true, 0, "high", `"reasoning":{"enabled":false}`},
+		{"budget on OpenRouter", "http://openrouter.ai/api/v1", false, 3000, "", `"reasoning":{"max_tokens":3000}`},
+		{"budget elsewhere is not sent", "http://localhost:8091/v1", false, 3000, "", ""},
+		{"effort on OpenRouter", "http://openrouter.ai/api/v1", false, 0, "xhigh", `"reasoning":{"effort":"xhigh"}`},
+		{"effort on a hosted API", "http://opencode.ai/zen/v1", false, 0, "max", `"reasoning_effort":"max"}`},
+		{"effort on a local server", "http://localhost:8091/v1", false, 0, "low", `"reasoning_effort":"low","chat_template_kwargs":{"reasoning_effort":"low"}`},
+		{"effort none on a local server", "http://localhost:8091/v1", false, 0, "none", `"reasoning_effort":"none","chat_template_kwargs":{"enable_thinking":false,"thinking":false}`},
+		{"default", "http://localhost:8091/v1", false, 0, "", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			client := New(Config{BaseURL: c.baseURL, Model: "m"}, httpClient)
-			body := postBody(t, client, got, model.Request{NoReasoning: c.noReasoning, ReasoningTokens: c.budget})
-			if c.want == "" && (strings.Contains(body, "chat_template_kwargs") || strings.Contains(body, `"reasoning"`)) {
+			body := postBody(t, client, got, model.Request{NoReasoning: c.noReasoning, ReasoningTokens: c.budget, Effort: c.effort})
+			if c.want == "" && (strings.Contains(body, "chat_template_kwargs") || strings.Contains(body, `"reasoning`)) {
 				t.Errorf("body = %s, want reasoning left to the server", body)
 			}
 			if c.want != "" && !strings.Contains(body, c.want) {

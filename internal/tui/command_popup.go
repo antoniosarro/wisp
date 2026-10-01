@@ -19,6 +19,7 @@ var commands = []command{
 	{"compact", "[focus]", "summarize the conversation to free context"},
 	{"clear", "", "start a new session; this one stays saved"},
 	{"model", "[name]", "switch model (lists them without a name)"},
+	{"effort", "[level]", "set the reasoning effort (lists the model's levels without one)"},
 	{"resume", "[session]", "continue a saved session (lists them without one)"},
 	{"sessions", "", "list saved sessions to resume"},
 	{"debug", "", "show or hide the debug panel"},
@@ -48,10 +49,10 @@ func (m *Model) popupRowLimit() int {
 }
 
 // suggestions lists what the input could be completing: a "/word" being
-// typed matches commands, and "/model " or "/resume " followed by a word
-// matches their arguments. Prefix matches come first, then the rest that
-// contain the word. Nothing is suggested once the popup was dismissed for
-// this input.
+// typed matches commands, and "/model ", "/effort ", or "/resume "
+// followed by a word matches their arguments. Prefix matches come first,
+// then the rest that contain the word. Nothing is suggested once the popup
+// was dismissed for this input.
 func (m *Model) suggestions() []suggestion {
 	v := m.input.Value()
 	if !strings.HasPrefix(v, "/") || strings.Contains(v, "\n") || v == m.cmdDismissed || len(m.pending) > 0 {
@@ -81,7 +82,8 @@ func (m *Model) suggestions() []suggestion {
 	return append(prefix, contains...)
 }
 
-// argSuggestions lists the models or sessions the argument could name.
+// argSuggestions lists the models, effort levels, or sessions the
+// argument could name.
 // They are listed once per popup and cached, since the popup renders on
 // every frame.
 func (m *Model) argSuggestions(cmd, word string) []suggestion {
@@ -92,6 +94,8 @@ func (m *Model) argSuggestions(cmd, word string) []suggestion {
 			items = m.modelItems(m.knownModels)
 		case "resume":
 			items = m.sessionItems()
+		case "effort":
+			items = m.effortItems()
 		default:
 			return nil
 		}

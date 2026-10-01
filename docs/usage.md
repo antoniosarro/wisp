@@ -51,6 +51,7 @@ send Alt+Enter; Ctrl+J always works.
 | --- | --- |
 | `/help` | Keys and commands |
 | `/model`, `/model NAME` | Pick a model from the endpoint's list, with context and capabilities, or switch |
+| `/effort`, `/effort LEVEL` | Pick the model's reasoning effort, or set it; `default` leaves it to the model, `none` turns reasoning off |
 | `/sessions`, `/resume`, `/resume ID` | List this directory's sessions, or switch to one while idle |
 | `/clear` | Start a new session; the current one stays saved |
 | `/context` | What fills the context window, by category |
@@ -59,7 +60,7 @@ send Alt+Enter; Ctrl+J always works.
 | `/todo`, `/agents` | Show or hide the task list and the sub-agent panel |
 | `/back` | Back from a sub-agent chat |
 
-Typing `/` lists the commands, and after `/model` or `/resume` their
+Typing `/` lists the commands, and after `/model`, `/effort`, or `/resume` their
 choices: type to filter, ↑/↓ to choose, Tab to complete, Enter to run.
 
 On a narrow terminal, `/debug` replaces the transcript; `/debug` again

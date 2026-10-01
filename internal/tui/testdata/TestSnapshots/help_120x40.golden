@@ -1,9 +1,9 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│   Commands: /help, /context, /compact [FOCUS], /clear, /model [NAME], /resume [SESSION], /sessions, /debug, /todo,   │
-│   /agents, /back                                                                                                     │
-│   Typing / lists the commands, and after /model or /resume their choices: ↑/↓ choose, Tab completes, Enter runs,     │
-│   Esc closes the list.                                                                                               │
-│   /model and /resume without an argument open a list to choose from: type to filter it.                              │
+│   Commands: /help, /context, /compact [FOCUS], /clear, /debug, /todo, /agents, /back                                 │
+│   Models: /model [NAME], /effort [LEVEL]. Sessions: /resume [SESSION], /sessions                                     │
+│   Typing / lists the commands, and after /model, /effort, or /resume their choices: ↑/↓ choose, Tab completes,       │
+│   Enter runs, Esc closes the list.                                                                                   │
+│   /model, /effort, and /resume without an argument open a list to choose from: type to filter it.                    │
 │                                                                                                                      │
 │   Enter sends; Alt+Enter or Ctrl+J inserts a newline.                                                                │
 │   Up/Down (or Alt+Up/Down) recall sent prompts and commands. You can draft while a turn runs.                        │
@@ -23,6 +23,8 @@
 │   Arrows/PgUp/PgDown scroll details. Keys typed while you were typing go to your draft.                              │
 │                                                                                                                      │
 │   /model lists models: arrows choose, Enter switches.                                                                │
+│   /effort sets the reasoning effort of the next requests, shown after the model below; none turns reasoning off.     │
+│   The levels are the model's, as the endpoint reports them.                                                          │
 │   /clear starts a new session; /resume or /sessions lists saved ones to continue.                                    │
 │   /todo shows or hides the task panel, which opens when the model first plans with the todo tool.                    │
 │   /compact summarizes the conversation so far to free context, keeping recent messages verbatim; any text after it   │
@@ -30,8 +32,6 @@
 │   /agents shows or hides the sub-agent panel, which opens when the first sub-agent starts; click a run in it to      │
 │   open that sub-agent's chat.                                                                                        │
 │   Ctrl+B or /back returns to the main chat from a sub-agent's.                                                       │
-│   Side panels stack on the right; on narrow terminals the tasks stay in the chat and /debug replaces the             │
-│   transcript.                                                                                                        │
 │                                                                                                       -  wisp is idle│
 ╰─ esc to close · pgup/pgdown scroll ──────────────────────────────────────────────────────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮

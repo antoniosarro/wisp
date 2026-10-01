@@ -23,17 +23,20 @@ type chatRequest struct {
 	StreamOptions *streamOptions `json:"stream_options,omitempty"`
 	Provider      *routing       `json:"provider,omitempty"` // OpenRouter only
 	Usage         *usageRequest  `json:"usage,omitempty"`    // OpenRouter only
-	// Reasoning controls reasoning on OpenRouter; ChatTemplateKwargs
-	// switches it off on llama.cpp, vLLM, and SGLang, through the chat
-	// template.
+	// Reasoning controls reasoning on OpenRouter, ReasoningEffort on
+	// OpenAI-style APIs; ChatTemplateKwargs reaches it on llama.cpp, vLLM,
+	// and SGLang, through the chat template.
 	Reasoning          *reasoningRequest `json:"reasoning,omitempty"`
+	ReasoningEffort    string            `json:"reasoning_effort,omitempty"`
 	ChatTemplateKwargs map[string]any    `json:"chat_template_kwargs,omitempty"`
 }
 
-// reasoningRequest is OpenRouter's reasoning control: off, or capped.
+// reasoningRequest is OpenRouter's reasoning control: off, an effort
+// level, or capped.
 type reasoningRequest struct {
-	Enabled   *bool `json:"enabled,omitempty"`
-	MaxTokens int   `json:"max_tokens,omitempty"`
+	Enabled   *bool  `json:"enabled,omitempty"`
+	Effort    string `json:"effort,omitempty"`
+	MaxTokens int    `json:"max_tokens,omitempty"`
 }
 
 // noThinking turns thinking off in the chat templates that support it:
@@ -148,8 +151,10 @@ func toChatRequest(modelName string, req model.Request) chatRequest {
 }
 
 // setReasoning applies req's reasoning controls the way the endpoint
-// understands them. A reasoning budget only exists on OpenRouter; other
-// servers leave reasoning to the model.
+// understands them. A reasoning budget only exists on OpenRouter. An
+// effort level goes in reasoning_effort elsewhere, and on a local server
+// also to the chat template, which reads reasoning_effort (gpt-oss) or,
+// for "none", the variables of noThinking.
 func (c *Client) setReasoning(chatReq *chatRequest, req model.Request) {
 	switch {
 	case req.NoReasoning && c.openRouter:
@@ -157,6 +162,17 @@ func (c *Client) setReasoning(chatReq *chatRequest, req model.Request) {
 		chatReq.Reasoning = &reasoningRequest{Enabled: &off}
 	case req.NoReasoning:
 		chatReq.ChatTemplateKwargs = noThinking
+	case req.Effort != "" && c.openRouter:
+		chatReq.Reasoning = &reasoningRequest{Effort: req.Effort}
+	case req.Effort != "":
+		chatReq.ReasoningEffort = req.Effort
+		switch {
+		case !isLocalURL(c.cfg.BaseURL):
+		case req.Effort == "none":
+			chatReq.ChatTemplateKwargs = noThinking
+		default:
+			chatReq.ChatTemplateKwargs = map[string]any{"reasoning_effort": req.Effort}
+		}
 	case req.ReasoningTokens > 0 && c.openRouter:
 		chatReq.Reasoning = &reasoningRequest{MaxTokens: req.ReasoningTokens}
 	}

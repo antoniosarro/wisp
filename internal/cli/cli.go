@@ -58,6 +58,7 @@ func run() error {
 	flag.BoolVar(&cfg.NoSummarize, "no-summarize", false, "when the context fills, only mask old tool output; never summarize the conversation")
 	flag.IntVar(&cfg.MaxAgents, "max-agents", 1, "sub-agents that may run at the same time")
 	flag.IntVar(&cfg.MaxIterations, "max-iterations", 0, "provider round-trips per turn before wrapping up (default 100)")
+	flag.StringVar(&cfg.Effort, "effort", os.Getenv("WISP_EFFORT"), "reasoning effort: none, minimal, low, medium, high, xhigh, or max, among those the model takes; /effort lists them (default: $WISP_EFFORT, else the model's own)")
 	flag.Func("price", "model price in US dollars per million tokens, as IN,OUT or IN,OUT,CACHED_IN, for cost estimates (default: $WISP_PRICE, else what the endpoint reports)", func(v string) (err error) {
 		cfg.Price, err = parsePrice(v)
 		return err
@@ -82,6 +83,10 @@ func run() error {
 			return fmt.Errorf("$WISP_PRICE: %w", err)
 		}
 		cfg.Price = p
+	}
+
+	if cfg.Effort != "" && !model.AllEfforts.Has(cfg.Effort) {
+		return fmt.Errorf("--effort %q: want one of %s", cfg.Effort, strings.Join(model.AllEfforts.Levels(), ", "))
 	}
 
 	if *showVersion {
@@ -134,6 +139,10 @@ func run() error {
 		provider.SetModel(cfg.ModelName)
 		info = cfg.override(describeModel(ctx, provider, cfg.ModelName))
 		rememberModel(cfg.BaseURL, info.ID)
+		if cfg.Effort != "" && info.Efforts != 0 && !info.Efforts.Has(cfg.Effort) {
+			fmt.Fprintf(os.Stderr, "wisp: %s doesn't take reasoning effort %s (it takes %s); using its default\n",
+				termsafe.Strip(info.ID), cfg.Effort, cmp.Or(strings.Join(info.Efforts.Levels(), ", "), "no level"))
+		}
 		if info.Tools == model.Unsupported {
 			// The name can be the endpoint's: its only model.
 			fmt.Fprintf(os.Stderr, "wisp: the endpoint says %s cannot call tools; running it without tools\n", termsafe.Strip(info.ID))

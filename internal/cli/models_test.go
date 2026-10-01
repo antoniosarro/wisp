@@ -69,3 +69,21 @@ func TestOverrideAndApplyModel(t *testing.T) {
 		t.Errorf("applyModel: vision %v, NoTools %v, Price %+v, window %d, max output %d", vision.Load(), loop.NoTools, loop.Price, loop.ContextWindow, loop.MaxOutput)
 	}
 }
+
+func TestApplyModelDropsAnEffortTheModelDoesNotTake(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		efforts model.Efforts
+		want    string
+	}{
+		{"taken", model.EffortsOf("low", "high"), "high"},
+		{"not taken", model.EffortsOf("none"), ""},
+		{"not reported", 0, "high"},
+	} {
+		loop := &core.Loop{Effort: "high"}
+		applyModel(loop, new(atomic.Bool), model.Info{Efforts: c.efforts})
+		if loop.Effort != c.want {
+			t.Errorf("%s: effort = %q, want %q", c.name, loop.Effort, c.want)
+		}
+	}
+}

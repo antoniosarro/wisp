@@ -247,8 +247,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.requestSuggestion())
 		}
 		// Ollama and LM Studio load a model on first use; only then do
-		// they report the context it runs with.
-		if msg.Err == nil && m.loop.ContextWindow == 0 && !m.redescribed {
+		// they report the context it runs with. llama-swap's servers are
+		// asked about effort levels only once they run.
+		unknown := m.loop.ContextWindow == 0 || m.opts.Model.Local && m.opts.Model.Efforts == 0
+		if msg.Err == nil && unknown && !m.redescribed {
 			m.redescribed = true
 			cmds = append(cmds, m.describeModel(m.opts.Model.ID, true))
 		}

@@ -74,6 +74,7 @@ func (c *Client) Describe(ctx context.Context, id string) (model.Info, error) {
 	for _, extra := range c.probeAll(ctx,
 		func(ctx context.Context) []model.Info { return c.llamaProps(ctx, id, len(infos) == 1) },
 		func(ctx context.Context) []model.Info { return c.ollamaShow(ctx, id) },
+		func(ctx context.Context) []model.Info { return c.llamaSwapProps(ctx, id) },
 	) {
 		merge(&info, extra)
 		found = true
@@ -110,6 +111,7 @@ func merge(dst *model.Info, src model.Info) {
 	dst.Tools = cmp.Or(dst.Tools, src.Tools)
 	dst.Vision = cmp.Or(dst.Vision, src.Vision)
 	dst.Reasoning = cmp.Or(dst.Reasoning, src.Reasoning)
+	dst.Efforts = cmp.Or(dst.Efforts, src.Efforts)
 	dst.Loaded = dst.Loaded || src.Loaded
 	dst.Embedding = dst.Embedding || src.Embedding
 	if !dst.Price.Known {

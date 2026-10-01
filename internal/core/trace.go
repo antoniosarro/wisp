@@ -24,6 +24,9 @@ func (l *Loop) startRequestSpan(ctx context.Context, req model.Request) (context
 	sp.Set("gen_ai.request.model", modelName)
 	sp.Set("gen_ai.request.max_tokens", req.MaxTokens)
 	sp.Set("wisp.tool_choice", req.ToolChoice)
+	if req.Effort != "" {
+		sp.Set("gen_ai.request.reasoning_effort", req.Effort)
+	}
 	sp.Set("wisp.messages", len(req.Messages))
 	c := l.contextStats()
 	sp.Set("wisp.context", struct {

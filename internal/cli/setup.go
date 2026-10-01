@@ -46,6 +46,7 @@ type Config struct {
 	MaxIterations int
 	Vision        bool
 	Price         model.Pricing // from --price; overrides what the endpoint reports
+	Effort        string        // from --effort: the reasoning effort level, "" for the model's default
 }
 
 // newProvider is the client for cfg's endpoint and model.
@@ -140,6 +141,7 @@ func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision 
 		}
 		loop.Spans.Add(span.KindMCPConnect, st.Server, st.Start, st.End, status, attrs)
 	}
+	loop.Effort = cfg.Effort
 	// The window must be set first: summaries are rendered for it.
 	applyModel(loop, vision, info)
 	if err := loop.LoadCompaction(); err != nil {

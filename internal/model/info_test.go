@@ -19,6 +19,7 @@ func TestInfoSummary(t *testing.T) {
 		{"vision", Info{ContextWindow: 200000, Vision: Supported}, "200K context · vision"},
 		{"embedding", Info{ContextWindow: 512, Embedding: true}, "512 context · embedding"},
 		{"unknown and unsupported extras hidden", Info{ContextWindow: 4096, Vision: Unsupported, Reasoning: SupportUnknown}, "4K context"},
+		{"efforts", Info{ContextWindow: 1024, Reasoning: Supported, Efforts: EffortsOf("high", "low")}, "1K context · reasoning · effort low/high"},
 		{"price", Info{ContextWindow: 1024, Price: Pricing{Known: true, Input: 0.05, Output: 0.08}}, "1K context · $0.05/$0.08 per 1M"},
 		{"free price", Info{ContextWindow: 1024, Price: Pricing{Known: true}}, "1K context · $0.00/$0.00 per 1M"},
 		{"unknown price hidden", Info{ContextWindow: 1024, Price: Pricing{Input: 3}}, "1K context"},

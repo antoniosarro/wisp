@@ -9,15 +9,18 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// statusline is the one dim row under the input: model, directory, git
-// branch, context fill and session spend. Segments that don't apply are
-// left out, and the row is truncated to the terminal width. It is empty on
-// short terminals.
+// statusline is the one dim row under the input: model and reasoning
+// effort, directory, git branch, context fill and session spend. Segments
+// that don't apply are left out, and the row is truncated to the terminal
+// width. It is empty on short terminals.
 func (m *Model) statusline() string {
 	if m.height < 12 {
 		return "" // no room to spare from the chat box
 	}
 	parts := []string{sanitize(m.opts.Model.ID)}
+	if e := m.loop.Effort; e != "" {
+		parts[0] += " (" + sanitize(e) + ")"
+	}
 	if dir := sanitize(tildePath(m.opts.WorkDir)); dir != "" {
 		parts = append(parts, dir)
 	}

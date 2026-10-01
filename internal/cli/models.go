@@ -120,13 +120,17 @@ func parsePrice(s string) (model.Pricing, error) {
 	return model.Pricing{Known: true, Input: rates[0], Output: rates[1], CachedInput: rates[2]}, nil
 }
 
-// applyModel configures the loop and the read tool for a model.
+// applyModel configures the loop and the read tool for a model, dropping
+// a reasoning effort level it doesn't take.
 func applyModel(loop *core.Loop, vision *atomic.Bool, info model.Info) {
 	loop.ContextWindow, loop.MaxOutput = info.ContextWindow, info.MaxOutput
 	loop.Price = info.Price
 	loop.NoTools = info.Tools == model.Unsupported
 	loop.Presummarize = info.Local // idle time on a local server is free
 	vision.Store(info.Vision == model.Supported)
+	if info.Efforts != 0 && !info.Efforts.Has(loop.Effort) {
+		loop.Effort = "" // a level the model doesn't take: its default
+	}
 }
 
 // printModels lists the endpoint's models for --models, marking current.

@@ -9,9 +9,10 @@ import (
 
 // helpText is the help overlay: one statement per line, wrapped to the
 // screen when shown (renderOverlayText).
-const helpText = `Commands: /help, /context, /compact [FOCUS], /clear, /model [NAME], /resume [SESSION], /sessions, /debug, /todo, /agents, /back
-Typing / lists the commands, and after /model or /resume their choices: ↑/↓ choose, Tab completes, Enter runs, Esc closes the list.
-/model and /resume without an argument open a list to choose from: type to filter it.
+const helpText = `Commands: /help, /context, /compact [FOCUS], /clear, /debug, /todo, /agents, /back
+Models: /model [NAME], /effort [LEVEL]. Sessions: /resume [SESSION], /sessions
+Typing / lists the commands, and after /model, /effort, or /resume their choices: ↑/↓ choose, Tab completes, Enter runs, Esc closes the list.
+/model, /effort, and /resume without an argument open a list to choose from: type to filter it.
 
 Enter sends; Alt+Enter or Ctrl+J inserts a newline.
 Up/Down (or Alt+Up/Down) recall sent prompts and commands. You can draft while a turn runs.
@@ -26,6 +27,7 @@ Approvals: y allows, a always allows matching calls this session, n denies, t de
 Arrows/PgUp/PgDown scroll details. Keys typed while you were typing go to your draft.
 
 /model lists models: arrows choose, Enter switches.
+/effort sets the reasoning effort of the next requests, shown after the model below; none turns reasoning off. The levels are the model's, as the endpoint reports them.
 /clear starts a new session; /resume or /sessions lists saved ones to continue.
 /todo shows or hides the task panel, which opens when the model first plans with the todo tool.
 /compact summarizes the conversation so far to free context, keeping recent messages verbatim; any text after it says what the summary should keep in detail. wisp also compacts on its own when the context fills up.
@@ -41,6 +43,7 @@ const (
 	msgChooseModel     = "Choose a model first: /model NUMBER or /model NAME (/model lists them)."
 	msgBusySwitchModel = "Cancel or finish the current turn before switching models."
 	msgNoModelSwitch   = "Model switching is unavailable for this provider."
+	msgBusyEffort      = "Cancel or finish the current turn before changing the reasoning effort."
 )
 
 // runCommand handles a "/name args..." input; ok is false for unknown commands.
@@ -77,6 +80,12 @@ func (m *Model) runCommand(input string) (cmd tea.Cmd, ok bool) {
 			return nil, true
 		}
 		return m.listModels(strings.Join(args, " ")), true
+	case "effort":
+		if len(args) == 0 {
+			m.pickEffort()
+		} else {
+			return m.setEffort(strings.ToLower(args[0])), true
+		}
 	case "compact":
 		m.startCompact(strings.Join(args, " "))
 	case "context":

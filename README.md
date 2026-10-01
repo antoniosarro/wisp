@@ -146,11 +146,11 @@ Everything is saved as it happens. See [architecture](docs/architecture.md).
 | Ctrl+Y | Copy the selected block |
 | F1 | All keys and commands |
 
-Commands: `/model` switches models, `/resume` and `/sessions` switch
-sessions, `/compact` summarizes on request, `/context` and `/debug` show
-where the context and the money go, `/clear` starts over. Approvals take
-`y` (allow), `a` (always allow calls like it), `n` (deny), and `t` (deny
-with a note). The full guide is in [docs/usage.md](docs/usage.md).
+Commands: `/model` switches models, `/effort` sets the reasoning effort,
+`/resume` and `/sessions` switch sessions, `/compact` summarizes on
+request, `/context` and `/debug` show where the context and the money go,
+`/clear` starts over. Approvals take `y` (allow), `a` (always allow calls
+like it), `n` (deny), and `t` (deny with a note). The full guide is in [docs/usage.md](docs/usage.md).
 
 ## Configuration
 

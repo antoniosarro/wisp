@@ -150,7 +150,7 @@ func (m *Model) useModel(msg modelInfoMsg) {
 		m.laterModel = &msg
 		return
 	}
-	info := msg.info
+	info, effort := msg.info, m.loop.Effort
 	if m.opts.OnModel != nil {
 		info = m.opts.OnModel(m.loop, info)
 	}
@@ -162,6 +162,9 @@ func (m *Model) useModel(msg modelInfoMsg) {
 	text := "Using model `" + info.ID + "` · " + info.Summary()
 	if msg.err != nil {
 		text += "\n\nThe endpoint's details are incomplete: " + msg.err.Error()
+	}
+	if effort != m.loop.Effort {
+		text += "\n\nThis model doesn't take reasoning effort `" + sanitize(effort) + "`, so it uses its default; /effort lists its levels."
 	}
 	if info.Tools == model.Unsupported {
 		text += "\n\nThe endpoint says this model cannot call tools, so wisp sends none: it can answer, but not read files or run commands."

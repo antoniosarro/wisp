@@ -32,17 +32,25 @@ from the `/models` listing and from local servers' native endpoints
 | Server | Context window | Tools | Vision | Reasoning |
 | --- | --- | --- | --- | --- |
 | vLLM, SGLang | `max_model_len` | — | — | — |
-| llama.cpp | `/props` per-slot `n_ctx` | `/props` template caps | `/props` modalities | — |
-| llama-swap | `meta.llamaswap.context_length` | — | — | — |
+| llama.cpp | `/props` per-slot `n_ctx` | `/props` template caps | `/props` modalities | `/props` template |
+| llama-swap | `meta.llamaswap.context_length` | the running model's `/props` | the running model's `/props` | the running model's `/props` |
 | Ollama | `/api/ps` loaded context, else the model's `num_ctx` | `/api/show` | `/api/show` | `/api/show` |
 | LM Studio | `/api/v0/models` loaded context | `tool_use` | model type `vlm` | — |
-| OpenRouter | `context_length` | `supported_parameters` | input modalities | `supported_parameters` |
+| OpenRouter | `context_length` | `supported_parameters` | input modalities | `supported_parameters`, `reasoning` |
 
 - **The window** drives the context budget ([compaction.md](compaction.md))
   and the TUI's usage bar. Ollama and LM Studio report it only once a model
   is loaded, so the TUI asks again after the first turn.
 - **A model that can't call tools** runs without tools.
 - **Vision** lets `read` send images (PNG, JPEG, GIF, WebP up to 10 MB).
+- **Reasoning effort levels** are what `/effort` offers. A llama.cpp chat
+  template that reads `reasoning_effort` takes `low`, `medium`, and
+  `high`; one that reads `enable_thinking` takes `none`; any other takes
+  none of them. llama-swap's model is asked once it is running: the TUI
+  asks again after the first turn. Until levels are known, `/effort`
+  lists only `default`; `/effort LEVEL` still sends any level. OpenRouter
+  lists each model's `supported_efforts`, and `none` where reasoning
+  isn't mandatory. Other hosted APIs don't report levels.
 - **Overrides:** `--context-window N` and `--vision` replace what the
   endpoint reports.
 
@@ -56,6 +64,7 @@ from the `/models` listing and from local servers' native endpoints
 | `--models` | | List the endpoint's models and exit |
 | `--context-window N` | what the endpoint reports | Override the context window |
 | `--vision` | what the endpoint reports | Send image files to the model |
+| `--effort LEVEL` | `$WISP_EFFORT`, else the model's own | Reasoning effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`; dropped for a model that doesn't take it |
 | `--price IN,OUT[,CACHED_IN]` | `$WISP_PRICE`, else the endpoint's | Model price per million tokens, for [cost](#cost) |
 | `--provider NAME` | `$WISP_PROVIDER` | OpenRouter: pin every request to one provider |
 | `--cheapest` | | OpenRouter: route to the two cheapest zero-retention providers |
@@ -77,7 +86,7 @@ from the `/models` listing and from local servers' native endpoints
 | Variable | Meaning |
 | --- | --- |
 | `WISP_BASE_URL`, `WISP_API_KEY`, `WISP_MODEL` | Defaults for `--base-url`, `--api-key`, `--model` |
-| `WISP_PROVIDER`, `WISP_PRICE` | Defaults for `--provider`, `--price` |
+| `WISP_PROVIDER`, `WISP_PRICE`, `WISP_EFFORT` | Defaults for `--provider`, `--price`, `--effort` |
 | `WISP_THEME=light` | Light palette; the default is dark |
 | `WISP_LOGO=text` | Text logo on the splash, even on kitty and Ghostty |
 

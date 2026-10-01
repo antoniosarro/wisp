@@ -72,6 +72,9 @@ type Request struct {
 	// ReasoningTokens, if set, caps the tokens spent reasoning, where the
 	// backend has a way to say so; MaxTokens still caps the whole output.
 	ReasoningTokens int
+	// Effort is the reasoning effort level (see Efforts), "" for the
+	// model's default; NoReasoning overrides it.
+	Effort string
 }
 
 // Provider streams a model response for a Request, normalizing

@@ -32,9 +32,20 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if m.noting && len(m.pending) > 0 && k != "ctrl+c" {
 		return m.handleNoteKey(msg)
 	}
-	if m.overlayText != "" && k == "esc" {
-		m.closeOverlay()
-		return nil
+	if m.helpOpen {
+		switch k {
+		case "esc":
+			m.closeHelp()
+			return nil
+		case "up", "down", "pgup", "pgdown", "ctrl+u", "ctrl+d":
+			return m.scroll(msg)
+		case "home":
+			m.help.GotoTop()
+			return nil
+		case "end":
+			m.help.GotoBottom()
+			return nil
+		}
 	}
 	if (k == "ctrl+c" || k == "esc") && m.inTurn && m.turnCancel != nil {
 		// A second Ctrl+C quits even if the turn hasn't wound down, e.g. a
@@ -56,7 +67,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if m.modal != nil {
 		return m.handlePickerKey(msg)
 	}
-	if matches := m.suggestions(); len(matches) > 0 && m.overlayText == "" {
+	if matches := m.suggestions(); len(matches) > 0 && !m.helpOpen {
 		if cmd, handled := m.handleCommandKey(k, matches); handled {
 			return cmd
 		}
@@ -141,14 +152,14 @@ func (m *Model) back() {
 	}
 }
 
-// scroll moves whichever pane fills the screen: the overlay, the debug
+// scroll moves whichever pane is in front: the help, the debug
 // panel, else the transcript,
 // following new output again once it reaches the bottom.
 func (m *Model) scroll(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	switch {
-	case m.overlayText != "":
-		m.overlay, cmd = m.overlay.Update(msg)
+	case m.helpOpen:
+		m.help, cmd = m.help.Update(msg)
 		return cmd
 	case m.debugFullscreen():
 		m.debug, cmd = m.debug.Update(msg)

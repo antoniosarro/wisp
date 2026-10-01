@@ -52,7 +52,7 @@ func (m *Model) setEffort(level string) tea.Cmd {
 		m.notify(msgBusyEffort)
 		return nil
 	}
-	m.closeOverlay()
+	m.closeHelp()
 	if level == defaultEffort {
 		level = ""
 	}

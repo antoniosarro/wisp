@@ -31,6 +31,9 @@ core and no framework around it.
 - **Local-first.** Discovers each model's context window, tool support,
   vision, and reasoning from the server itself, and streams reasoning from
   models that show it.
+- **Reasoning effort.** `/effort` offers the levels the model actually
+  takes, from `none` to `max`, read from llama.cpp's chat template or
+  OpenRouter's model list.
 - **Built-in tools.** `read`, `ls`, `glob`, `grep`, `write`, `edit`,
   `multi_edit`, `bash`, `fetch`, and a `todo` list. Reads run in parallel,
   and output is capped so one big file can't flood the context.
@@ -52,8 +55,23 @@ core and no framework around it.
   trust it.
 - **Tracing.** `--trace` shows every turn, request, tool call, and cost as
   live timelines in the browser.
+- **Plans and progress.** The model can keep a todo list, shown in a side
+  panel that ticks steps off as it works.
 - **Cost-aware on OpenRouter.** Only zero-data-retention providers, the
   cheapest first, with the real billed cost per request.
+
+## A look around
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/usage.md#the-tui"><img src="docs/images/tools.gif" alt="Tool calls: a search, the files read, one expanded"></a><br><sub><b>Tool calls</b>: each call is a card; select one and expand its output.</sub></td>
+    <td width="50%"><a href="docs/usage.md#reasoning-effort"><img src="docs/images/effort.gif" alt="Reasoning effort: high, then none"></a><br><sub><b>Reasoning effort</b>: think hard, or not at all.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/subagents.md"><img src="docs/images/agents.gif" alt="Two sub-agents running at once"></a><br><sub><b>Sub-agents</b>: two explorers in parallel, only their reports come back.</sub></td>
+    <td width="50%"><a href="docs/tracing.md"><img src="docs/images/trace-live.gif" alt="The trace page filling in live beside wisp"></a><br><sub><b>Tracing</b>: every request, tool call, and cent, live.</sub></td>
+  </tr>
+</table>
 
 ## Install
 
@@ -135,6 +153,19 @@ back, and repeats until the model answers. Before every request it checks
 the context budget and masks or summarizes old history if needed.
 Everything is saved as it happens. See [architecture](docs/architecture.md).
 
+A few choices shape the rest
+([why, in detail](docs/architecture.md#design-choices)):
+
+- **Small windows are the normal case**, so old tool output is masked
+  first and summaries are prepared while the server is idle.
+- **The prompt cache is protected**: the tool list never changes mid-session,
+  and MCP tools sit behind two fixed tools.
+- **The server is the source of truth** for the context window and
+  capabilities; flags only correct it.
+- **Approvals, not a sandbox**: you see exactly what will run.
+- **One SQLite file** holds sessions and traces, which is what makes resume
+  and live tracing work.
+
 ## Using it
 
 | Key | Action |
@@ -202,8 +233,9 @@ just check             # fmt, vet, lint, test
 The end-to-end tests run the real binary against a scriptable fake model
 server (`internal/cli/testdata/script/*.txtar`) and in a pseudo-terminal,
 and TUI snapshots cover eighteen states at four terminal sizes.
-`just screenshot` records the real TUI for the docs
-([scripts/screenshot.sh](scripts/screenshot.sh)). Releases are tagged with
+`just screenshot` records the real TUI in a private headless display, and
+`just gifs` re-creates every image in `docs/images` with it, on OpenRouter
+([scripts/gifs.sh](scripts/gifs.sh)). Releases are tagged with
 `just release` ([packaging/README.md](packaging/README.md)).
 
 ## License

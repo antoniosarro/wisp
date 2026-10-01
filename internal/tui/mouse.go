@@ -60,7 +60,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		m.approval, cmd = m.approval.Update(msg)
 		return cmd
 	}
-	if m.overlayText != "" {
+	if m.helpOpen {
 		if tea.MouseEvent(msg).IsWheel() {
 			return m.scroll(msg)
 		}

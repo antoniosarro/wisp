@@ -86,6 +86,14 @@ You are a code search specialist. Report findings as file:line references.
 
 ## TUI
 
+![Two sub-agents at once, the Agents panel, and one sub-agent's chat](images/agents.gif)
+
+Above, wisp runs with `--max-agents 2` and starts two `explorer`
+sub-agents at once, one per package. The Agents panel follows both while
+they read, and the main agent writes its answer from their two reports
+alone. The agent is a short file:
+[explorer.md](../scripts/qa/config/wisp/agents/explorer.md).
+
 - **The Agents panel** opens on the right when the first sub-agent starts.
   It shows recent runs: status, task, elapsed time, and the current step
   (or tool calls and tokens when finished).

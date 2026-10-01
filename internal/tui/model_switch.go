@@ -137,7 +137,7 @@ func (m *Model) switchModel(name string) tea.Cmd {
 	catalog.SetModel(name)
 	m.opts.Model = model.Info{ID: name}
 	m.redescribed = false
-	m.closeOverlay()
+	m.closeHelp()
 	return m.describeModel(name, false)
 }
 

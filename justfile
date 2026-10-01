@@ -39,10 +39,15 @@ snapshots update="":
 fuzz time="30s":
     go test ./internal/tui -run '^$' -fuzz FuzzScreenFits -fuzztime {{time}}
 
-# screenshot or GIF of the real TUI: just screenshot OUT.png|OUT.gif [STEP...] (scripts/screenshot.sh)
+# screenshot or GIF of the real TUI, in a private headless display: just screenshot OUT.png|OUT.gif [STEP...] (scripts/screenshot.sh)
 [positional-arguments]
 screenshot *args:
     ./scripts/screenshot.sh "$@"
+
+# record the docs' GIFs on OpenRouter in a private headless display: just gifs [NAME...] (scripts/gifs.sh)
+[positional-arguments]
+gifs *args:
+    ./scripts/gifs.sh "$@"
 
 # tag a release: wisp on a local model suggests the version and notes (scripts/release.sh)
 release:

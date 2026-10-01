@@ -38,8 +38,11 @@ func (p Pricing) String() string {
 
 // rate formats a per-million price with at least two decimals, like
 // money, and more when the price has them: cheap models and fractional
-// rates ($0.625) must not be rounded into a different price.
+// rates ($0.625) must not be rounded into a different price. Ten
+// significant digits drop the noise of converting per-token prices
+// (1.1400000000000001), which no real price has.
 func rate(v float64) string {
+	v, _ = strconv.ParseFloat(strconv.FormatFloat(v, 'g', 10, 64), 64)
 	s := strconv.FormatFloat(v, 'f', -1, 64)
 	dot := strings.IndexByte(s, '.')
 	switch {

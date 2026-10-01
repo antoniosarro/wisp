@@ -16,7 +16,8 @@
 
 ## How it works
 
-- [Architecture](architecture.md): the packages and one turn through them
+- [Architecture](architecture.md): the packages, one turn through them,
+  and the design choices behind them
 - [Model provider](model-provider.md): streaming, reasoning, retries,
   model discovery
 - [Context compaction](compaction.md): masking and summarizing to fit small

@@ -35,7 +35,7 @@ func TestRenderMarkdownAnswerKeepsListWithNestedCodeIntact(t *testing.T) {
 	// A fence indented under a list item is part of that list, not a
 	// standalone top-level block. Pulling it out into its own segment
 	// would sever the list into two separately-rendered glamour documents
-	// (losing continuation/numbering) — this is the bug being regressed
+	// (losing continuation/numbering): this is the bug being regressed
 	// against.
 	text := "1. do this:\n\n   ```bash\n   echo hi\n   ```\n\n2. then this"
 

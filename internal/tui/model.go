@@ -47,7 +47,7 @@ type Model struct {
 	input    textarea.Model
 	spin     spinner.Model
 	approval viewport.Model // the front request's details
-	overlay  viewport.Model // help, shown over the transcript
+	help     viewport.Model // the help modal's scrolling body
 	debug    viewport.Model // the debug panel, full screen on a narrow terminal
 
 	width, height int
@@ -118,7 +118,7 @@ type Model struct {
 	suggestGen    int    // identifies the latest suggestion request
 	suggestCancel context.CancelFunc
 
-	overlayText string
+	helpOpen bool
 	modal       *picker // a list to choose from, over the chat
 
 	knownModels []model.Info  // the endpoint's models, as last listed
@@ -163,7 +163,7 @@ func NewModel(ctx context.Context, loop *core.Loop, send func(tea.Msg), msgs <-c
 		msgs:          msgs,
 		opts:          opts,
 		approval:      viewport.New(1, 1),
-		overlay:       viewport.New(1, 1),
+		help:          viewport.New(1, 1),
 		debug:         viewport.New(1, 1),
 		knownModels:   opts.Models,
 		input:         ti,
@@ -328,7 +328,7 @@ func (m *Model) submit() tea.Cmd {
 		return nil
 	}
 	m.clearSuggestion()
-	m.closeOverlay()
+	m.closeHelp()
 	if m.viewing != 0 { // show where the message goes
 		m.viewMain()
 	}

@@ -152,7 +152,7 @@ func writeCost(b *strings.Builder, info model.Info, c costSummary, inner int, ro
 		note("--price IN,OUT sets it ($/1M)")
 		return
 	}
-	last := "—"
+	last := "-"
 	if c.LastPriced {
 		last = usd(c.Last)
 	}

@@ -5,7 +5,7 @@
 //   - view.go: layout and View
 //   - keys.go: key handling: cancelling and quitting, scrolling, input
 //     history, selecting blocks
-//   - command.go: slash commands and the help overlay
+//   - command.go: slash commands and the help modal
 //   - command_popup.go: the popup completing commands and their arguments
 //   - picker.go: the modal list /model and /resume choose from
 //   - model_switch.go: listing, switching, and describing models

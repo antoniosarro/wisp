@@ -28,7 +28,7 @@ func TestCostAccumulatesPerRequestPrice(t *testing.T) {
 		t.Fatalf("cost = %+v, want session 0.327 with one unpriced request", c)
 	}
 	out := stripANSI(renderDebugPanel(m.stats, m.opts, c, 0, 0, sidePanelWidth))
-	for _, want := range []string{"Cost (est.)", "spent       —         $0.327", "1 request(s) had no known price"} {
+	for _, want := range []string{"Cost (est.)", "spent       -         $0.327", "1 request(s) had no known price"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("panel missing %q:\n%s", want, out)
 		}

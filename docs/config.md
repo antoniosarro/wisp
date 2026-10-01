@@ -31,11 +31,11 @@ from the `/models` listing and from local servers' native endpoints
 
 | Server | Context window | Tools | Vision | Reasoning |
 | --- | --- | --- | --- | --- |
-| vLLM, SGLang | `max_model_len` | — | — | — |
+| vLLM, SGLang | `max_model_len` | n/a | n/a | n/a |
 | llama.cpp | `/props` per-slot `n_ctx` | `/props` template caps | `/props` modalities | `/props` template |
 | llama-swap | `meta.llamaswap.context_length` | the running model's `/props` | the running model's `/props` | the running model's `/props` |
 | Ollama | `/api/ps` loaded context, else the model's `num_ctx` | `/api/show` | `/api/show` | `/api/show` |
-| LM Studio | `/api/v0/models` loaded context | `tool_use` | model type `vlm` | — |
+| LM Studio | `/api/v0/models` loaded context | `tool_use` | model type `vlm` | n/a |
 | OpenRouter | `context_length` | `supported_parameters` | input modalities | `supported_parameters`, `reasoning` |
 
 - **The window** drives the context budget ([compaction.md](compaction.md))

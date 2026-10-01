@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/session"
@@ -212,11 +213,11 @@ func TestCommandPopupEnterRuns(t *testing.T) {
 	m, _ := newTestModel(t, &testutil.ScriptedProvider{})
 	typeRunes(m, "/hel")
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if m.input.Value() != "" || m.overlayText == "" || !strings.Contains(stripANSI(m.View()), "esc to close") {
+	if m.input.Value() != "" || !m.helpOpen || !strings.Contains(stripANSI(m.View()), "esc to close") {
 		t.Fatalf("enter didn't run /help: input %q", m.input.Value())
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if m.overlayText != "" {
+	if m.helpOpen {
 		t.Error("esc didn't close the help")
 	}
 }
@@ -294,27 +295,31 @@ func TestFindSession(t *testing.T) {
 	}
 }
 
-// The help's lines are separate statements: each starts its own line, and
-// wrapped lines keep their words whole within the width.
-func TestHelpKeepsItsLines(t *testing.T) {
-	for _, w := range []int{60, 80, 120} {
-		m, _ := newTestModel(t, &testutil.ScriptedProvider{})
-		m.Update(tea.WindowSizeMsg{Width: w, Height: 80})
-		m.showHelp()
-		view := stripANSI(m.overlay.View())
-		for _, first := range []string{"Commands: /help", "Typing / lists", "Enter sends;", "Approvals: y allows"} {
-			found := false
-			for _, l := range strings.Split(view, "\n") {
-				found = found || strings.HasPrefix(strings.TrimSpace(l), first)
-			}
-			if !found {
-				t.Errorf("width %d: no line starts with %q:\n%s", w, first, view)
+// The help fits its width, lists every section and command, and scrolls
+// within its modal when the screen is short.
+func TestHelpLayout(t *testing.T) {
+	for _, w := range []int{30, 60, 100} {
+		text := stripANSI(renderHelp(w))
+		for _, l := range strings.Split(text, "\n") {
+			if ansi.StringWidth(l) > w {
+				t.Errorf("width %d: line overflows: %q", w, l)
 			}
 		}
-		for _, l := range strings.Split(view, "\n") {
-			if f := strings.Fields(l); len(f) == 1 && len(f[0]) < 8 && !strings.HasSuffix(f[0], ".") {
-				t.Errorf("width %d: stray word %q on its own line:\n%s", w, f[0], view)
+		for _, want := range []string{"Commands", "Input", "Transcript", "Approvals", "Notes", "/compact [focus]", "always allow"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("width %d: help lacks %q", w, want)
 			}
 		}
+	}
+	m, _ := newTestModel(t, &testutil.ScriptedProvider{})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m.showHelp()
+	view := stripANSI(m.View())
+	if !strings.Contains(view, "Help") || !strings.Contains(view, "0%") {
+		t.Fatalf("short screen: no scrollable help modal:\n%s", view)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.help.YOffset != 1 {
+		t.Errorf("down scrolled the help to %d, want 1", m.help.YOffset)
 	}
 }

@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"cmp"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -60,9 +59,12 @@ func (m *Model) applyLayout() {
 	if m.debugOpen {
 		m.refreshDebug()
 	}
-	if m.overlayText != "" {
-		m.overlay.Width, m.overlay.Height = max(1, m.chatWidth()), vpHeight
-		m.overlay.SetContent(renderOverlayText(m.overlayText, m.chatWidth()))
+	if m.helpOpen {
+		// The modal's border, title, and keys take 6 rows.
+		content := renderHelp(m.helpWidth() - 4)
+		m.help.Width = m.helpWidth() - 4
+		m.help.Height = max(1, min(lipgloss.Height(content), boxHeight+2-6))
+		m.help.SetContent(content)
 	}
 	m.syncViewport()
 }
@@ -294,7 +296,7 @@ func (m *Model) View() string {
 	default:
 		main = m.chatBox(max(1, m.width-2))
 	}
-	return fitView(m.overlayPicker(m.overlayMascot(main))+"\n"+m.footer(), m.width, m.height)
+	return fitView(m.overlayPicker(m.overlayHelp(m.overlayMascot(main)))+"\n"+m.footer(), m.width, m.height)
 }
 
 // fitView clips s to the terminal, so an oversized frame can't scroll it.
@@ -322,14 +324,10 @@ func (m *Model) footer() string {
 	return renderInputBox(m.input.View(), m.width) + m.statuslineRow()
 }
 
-// chatBox frames the transcript, or the overlay over it, with any notice
+// chatBox frames the transcript, with any notice
 // in its bottom border and, in a sub-agent's conversation, its name in the
 // top border.
 func (m *Model) chatBox(width int) string {
-	if m.overlayText != "" {
-		box := styleChatBox.Width(width).Render(m.overlay.View() + strings.Repeat("\n", m.mascotPad))
-		return withBorderLabel(box, cmp.Or(m.notice, "esc to close · pgup/pgdown scroll"))
-	}
 	box := styleChatBox.Width(width).Render(m.viewport.View() + strings.Repeat("\n", m.mascotPad))
 	if m.viewing != 0 {
 		left, right := m.viewLabel()

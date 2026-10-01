@@ -93,9 +93,47 @@ sequenceDiagram
 - **Tracing.** Every step is also recorded as a span, so `--trace` can
   show it live.
 
+## Design choices
+
+- **One wire format.** wisp speaks only OpenAI-compatible chat
+  completions. Every local server and most hosted APIs do, so one client
+  covers llama.cpp, vLLM, Ollama, LM Studio, and OpenRouter. What differs
+  between them, such as how reasoning streams, where the context size is
+  reported, or OpenRouter's routing, stays inside `openaicompat`, behind the
+  `Provider` interface ([model-provider.md](model-provider.md)).
+- **Small windows are the normal case.** A local model often has a small
+  context window and a server with one slot. So tool output is capped, old
+  output is masked before anything is summarized, and the summary is
+  prepared while the server would sit idle ([compaction.md](compaction.md)).
+- **The prompt cache is worth protecting.** On local hardware, re-reading a
+  long prompt is the slow part of a request. wisp keeps the prompt's prefix
+  stable: the tool list never changes during a session, and MCP tools are
+  reached through two fixed tools instead. Changing the list measured at 0%
+  cached; keeping it fixed, 93–98% ([mcp.md](mcp.md#a-fixed-tool-list-for-the-prompt-cache)).
+- **Learn from the server, override with flags.** The context window,
+  tool, vision, and reasoning support, and the reasoning effort levels come
+  from the endpoint itself. Flags correct what it gets wrong; there is no
+  config file yet ([config.md](config.md)).
+- **Ask, don't sandbox.** Approvals show exactly what will run, with
+  control characters made visible and symlinks resolved, and remember
+  what you allow for the session. They are not a sandbox: tools run with
+  your account's access ([permissions.md](permissions.md)).
+- **Everything in one SQLite file.** Messages, compactions, and trace spans
+  are written as they happen. That is what lets a crashed turn be repaired
+  on resume, several wisp processes share a directory, and the trace page
+  show a session live ([session.md](session.md)).
+- **Sub-agents return reports, not transcripts.** A sub-agent works in its
+  own loop, and only its final message reaches the main conversation, so
+  delegating keeps the main context small. There is one level: sub-agents
+  can't start their own ([subagents.md](subagents.md)).
+- **Observable by default.** Every turn, request, and tool call is a span
+  in the session database, so tracing costs nothing to turn on and works
+  for past sessions too ([tracing.md](tracing.md)).
+- **A small core, no framework.** Each part is a package behind a plain Go
+  interface, built into one static binary.
+
 ## Scope
 
-- **One level of sub-agents.** Sub-agents can't start their own.
 - **Local-first, not a server.** wisp runs where you work, against a local
   or remote model API.
 - **Linux first.** The code is portable Go, but only Linux is tested;

@@ -1,42 +1,60 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
-// helpText is the help overlay: one statement per line, wrapped to the
-// screen when shown (renderOverlayText).
-const helpText = `Commands: /help, /context, /compact [FOCUS], /clear, /debug, /todo, /agents, /back
-Models: /model [NAME], /effort [LEVEL]. Sessions: /resume [SESSION], /sessions
-Typing / lists the commands, and after /model, /effort, or /resume their choices: ↑/↓ choose, Tab completes, Enter runs, Esc closes the list.
-/model, /effort, and /resume without an argument open a list to choose from: type to filter it.
+// helpSection is a titled group of help rows: what to press or type, and
+// what it does. A row without a key is a note across the whole width.
+type helpSection struct {
+	title string
+	rows  [][2]string
+}
 
-Enter sends; Alt+Enter or Ctrl+J inserts a newline.
-Up/Down (or Alt+Up/Down) recall sent prompts and commands. You can draft while a turn runs.
-Esc or Ctrl+C cancels a running turn. When idle, Esc closes this view, leaves a sub-agent chat, or clears a selection; Ctrl+C clears the input, and twice exits.
-PgUp/PgDown scroll; Ctrl+End follows the latest output.
-Alt+Left/Right selects transcript blocks; Ctrl+O expands/collapses, or opens a sub-agent's own chat from its box.
-Ctrl+R toggles the latest reasoning block.
-Mouse: hover marks the block a click will hit; click a tool or reasoning box to expand/collapse it, or an agent box to open its chat; drag over text to copy it.
-Ctrl+Y copies the selected block to the system clipboard (over SSH, or with no clipboard tool, through the terminal with OSC 52).
-
-Approvals: y allows, a always allows matching calls this session, n denies, t denies with a note telling wisp what to do instead, Esc cancels the turn; the key hints can also be clicked.
-Arrows/PgUp/PgDown scroll details. Keys typed while you were typing go to your draft.
-
-/model lists models: arrows choose, Enter switches.
-/effort sets the reasoning effort of the next requests, shown after the model below; none turns reasoning off. The levels are the model's, as the endpoint reports them.
-/clear starts a new session; /resume or /sessions lists saved ones to continue.
-/todo shows or hides the task panel, which opens when the model first plans with the todo tool.
-/compact summarizes the conversation so far to free context, keeping recent messages verbatim; any text after it says what the summary should keep in detail. wisp also compacts on its own when the context fills up.
-/agents shows or hides the sub-agent panel, which opens when the first sub-agent starts; click a run in it to open that sub-agent's chat.
-Ctrl+B or /back returns to the main chat from a sub-agent's.
-Side panels stack on the right; on narrow terminals the tasks stay in the chat and /debug replaces the transcript.
-
-Start wisp with --suggest to get a suggested next message after each reply (→ accepts it).
-Set WISP_THEME=light for a light terminal palette.`
+// helpSections follow the commands (from commands) in the help.
+var helpSections = []helpSection{
+	{"Input", [][2]string{
+		{"enter", "send, or run a /command"},
+		{"alt+enter, ctrl+j", "insert a newline"},
+		{"↑/↓, alt+↑/↓", "recall sent prompts and commands; you can draft while a turn runs"},
+		{"/", "list the commands, and after /model, /effort, or /resume their choices: ↑/↓ choose, tab completes, enter runs, esc closes"},
+		{"→", "accept the suggested next message (start wisp with --suggest)"},
+		{"esc, ctrl+c", "cancel a running turn"},
+		{"ctrl+c", "when idle, clear the input; twice exits"},
+	}},
+	{"Transcript", [][2]string{
+		{"pgup/pgdown", "scroll"},
+		{"ctrl+end", "follow the latest output"},
+		{"alt+←/→", "select a block"},
+		{"ctrl+o", "expand or collapse the selected block, or open a sub-agent's chat from its box"},
+		{"ctrl+r", "toggle the latest reasoning block"},
+		{"ctrl+y", "copy the selected block to the clipboard (through the terminal with OSC 52 over SSH or without a clipboard tool)"},
+		{"esc", "leave a sub-agent's chat, or clear a selection"},
+		{"ctrl+b", "return to the main chat from a sub-agent's"},
+		{"mouse", "hover marks the block a click will hit; click a tool or reasoning box to expand it, or an agent box to open its chat; drag over text to copy it"},
+	}},
+	{"Approvals", [][2]string{
+		{"y", "allow"},
+		{"a", "always allow matching calls this session"},
+		{"n", "deny"},
+		{"t", "deny with a note telling wisp what to do instead"},
+		{"esc", "cancel the turn"},
+		{"↑/↓, pgup/pgdown", "scroll the details"},
+		{"", "The key hints can also be clicked. Keys typed while you were typing go to your draft."},
+	}},
+	{"Notes", [][2]string{
+		{"", "/model, /effort, and /resume without an argument open a list: type to filter it. The effort levels are the model's, as the endpoint reports them; none turns reasoning off."},
+		{"", "/compact keeps recent messages verbatim; text after it says what the summary should keep in detail. wisp also compacts on its own when the context fills up."},
+		{"", "The task and sub-agent panels open on their own when first needed; click a run in the sub-agent panel to open its chat."},
+		{"", "Side panels stack on the right; on narrow terminals the tasks stay in the chat and /debug replaces the transcript."},
+		{"", "Set WISP_THEME=light for a light terminal palette."},
+	}},
+}
 
 // Notices shown from more than one place.
 const (
@@ -110,32 +128,93 @@ func (m *Model) toggleDebug() {
 	m.applyLayout()
 }
 
-// showHelp shows the keys and commands over the transcript.
+// showHelp opens the keys and commands in a modal over the chat.
 func (m *Model) showHelp() {
 	m.modal = nil
-	m.showOverlay(helpText)
-}
-
-// showOverlay shows reference text over the transcript until Esc, so it
-// doesn't pile up in the chat.
-func (m *Model) showOverlay(text string) {
-	m.overlayText = text
-	m.overlay.GotoTop()
+	m.helpOpen = true
+	m.help.GotoTop()
 	m.applyLayout()
 }
 
-// renderOverlayText wraps reference text to width line by line. Its lines
-// are separate statements: Markdown would run them together into one
-// paragraph, and re-wrapping that paragraph leaves stray words.
-func renderOverlayText(text string, width int) string {
-	inner := max(1, width-chatMarginLeft)
-	return styleChatMargin.Render(ansi.Hardwrap(ansi.Wrap(text, inner, ""), inner, true))
-}
-
-// closeOverlay hides the overlay, if one is shown.
-func (m *Model) closeOverlay() {
-	if m.overlayText != "" {
-		m.overlayText = ""
+// closeHelp hides the help, if it's open.
+func (m *Model) closeHelp() {
+	if m.helpOpen {
+		m.helpOpen = false
 		m.applyLayout()
 	}
+}
+
+// helpWidth is the help modal's outer width.
+func (m *Model) helpWidth() int {
+	return min(100, max(24, m.chatWidth()-4))
+}
+
+// renderHelp lays the help out to width: per section, its keys in one
+// column and what they do wrapped beside them.
+func renderHelp(width int) string {
+	cmds := helpSection{title: "Commands"}
+	for _, c := range commands {
+		cmds.rows = append(cmds.rows, [2]string{strings.TrimSpace("/" + c.name + " " + c.args), c.desc})
+	}
+	sections := append([]helpSection{cmds}, helpSections...)
+	keyWidth := 0
+	for _, s := range sections {
+		for _, r := range s.rows {
+			keyWidth = max(keyWidth, ansi.StringWidth(r[0]))
+		}
+	}
+	keyWidth = min(keyWidth, width/3)
+	wrap := func(text string, w int) []string {
+		w = max(1, w)
+		return strings.Split(ansi.Hardwrap(ansi.Wrap(text, w, ""), w, true), "\n")
+	}
+	var b strings.Builder
+	for i, s := range sections {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(styleApprovalTitle.Render(s.title) + "\n")
+		for _, r := range s.rows {
+			if r[0] == "" {
+				for _, l := range wrap(r[1], width-2) {
+					b.WriteString("  " + l + "\n")
+				}
+				continue
+			}
+			indent := strings.Repeat(" ", keyWidth+4)
+			key := "  " + styleAnswerPrefix.Render(r[0])
+			if w := ansi.StringWidth(r[0]); w > keyWidth { // its own line
+				b.WriteString(key + "\n")
+				key = indent
+			} else {
+				key += strings.Repeat(" ", keyWidth-w+2)
+			}
+			for j, l := range wrap(r[1], width-keyWidth-4) {
+				if j > 0 {
+					key = indent
+				}
+				b.WriteString(key + l + "\n")
+			}
+		}
+	}
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
+// overlayHelp centers the help modal over main: a title, the scrolling
+// body, and its keys.
+func (m *Model) overlayHelp(main string) string {
+	if !m.helpOpen {
+		return main
+	}
+	inner := m.helpWidth() - 4
+	title := styleToolText.Render("Help")
+	if !(m.help.AtTop() && m.help.AtBottom()) {
+		pct := fmt.Sprintf("%d%%", int(m.help.ScrollPercent()*100))
+		title += strings.Repeat(" ", max(1, inner-4-len(pct))) + styleDim.Render(pct)
+	}
+	body := title + "\n\n" + m.help.View() + "\n\n" + styleDim.Render("↑/↓ pgup/pgdown scroll · esc to close")
+	box := stylePermissionBox.Width(inner + 2).Render(body)
+	top := max(0, (lipgloss.Height(main)-lipgloss.Height(box))/2)
+	left := max(0, (lipgloss.Width(main)-lipgloss.Width(box))/2)
+	return placeOver(main, box, top, left)
 }

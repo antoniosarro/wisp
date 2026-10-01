@@ -99,6 +99,14 @@ On OpenRouter, requests also record how they were routed
 
 ## The page
 
+![The trace page beside wisp, filling in live, then its spans stepped through](images/trace-live.gif)
+
+Above, wisp works on the left while the page on the right follows its
+session: the turn, each request, and each tool call appear as they start,
+and the totals and context chart update. Afterwards, ↑/↓ step through the
+spans, and each one's details show its tokens, timing, billed cost, and
+which provider served it.
+
 `--trace` serves the page from the same process while wisp runs, and
 prints its URL on stderr (and the TUI shows it on its welcome screen). If
 the port is taken, e.g. by a second wisp with `--trace`, it uses a free

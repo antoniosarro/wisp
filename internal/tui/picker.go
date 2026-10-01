@@ -49,7 +49,7 @@ func (m *Model) openPicker(p *picker) {
 			p.index = i
 		}
 	}
-	m.closeOverlay()
+	m.closeHelp()
 	m.modal = p
 }
 

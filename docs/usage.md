@@ -21,6 +21,19 @@ appears in a dimmed box above it, and each tool call gets a card that fills
 in as it finishes. The composer stays editable while the model works, so
 you can write the next message.
 
+![Tool calls: a search, the files it read, and one call's output expanded](images/tools.gif)
+
+Each tool call is a card: a spinner while it runs, then ✓ or ✗ with a
+one-line summary, such as the lines read or a command's exit status.
+Reads and searches run at the same time; a write or a command waits for
+the calls before it. Alt+Left selects a card, and Ctrl+O opens its full
+output.
+
+When the model plans with the todo tool, the task panel shows the plan and
+ticks steps off as they're done; `/todo` shows or hides it.
+
+![A plan in the task panel, worked through step by step](images/todo.gif)
+
 ### Keys
 
 | Key | Action |
@@ -47,6 +60,8 @@ send Alt+Enter; Ctrl+J always works.
 
 ### Commands
 
+![The command popup, help, and the model and effort pickers](images/tour.gif)
+
 | Command | Action |
 | --- | --- |
 | `/help` | Keys and commands |
@@ -62,9 +77,41 @@ send Alt+Enter; Ctrl+J always works.
 
 Typing `/` lists the commands, and after `/model`, `/effort`, or `/resume` their
 choices: type to filter, ↑/↓ to choose, Tab to complete, Enter to run.
+`/model` shows what the endpoint reports about each model: its context
+window, tools, vision, reasoning effort levels, and price.
 
 On a narrow terminal, `/debug` replaces the transcript; `/debug` again
 returns to it. The smallest usable size is 20 × 8.
+
+### Reasoning effort
+
+![Reasoning effort: high, its reasoning opened with Ctrl+R, then none](images/effort.gif)
+
+`/effort` sets how hard a reasoning model thinks before it answers.
+`default` leaves it to the model, `none` turns reasoning off, and the
+levels in between trade speed and cost for depth. The level shows next to
+the model in the status line, and `--effort LEVEL` (or `$WISP_EFFORT`)
+sets it at startup.
+
+The list offers only the levels the model takes, as the endpoint reports
+them: OpenRouter lists each model's levels, and a llama.cpp chat template
+says whether it takes an effort or can turn thinking off. A local model is
+asked once it has loaded, so before its first turn `/effort` lists only
+`default`. Switching to a model that doesn't take the current level goes
+back to its default, and says so. Ctrl+R opens the latest reasoning.
+
+### Context and cost
+
+![OpenRouter's cheapest providers, /context, /debug, sessions, and one-shot mode](images/cost.gif)
+
+`/context` shows what fills the context window, by category, and where
+masking and summarizing would start. `/debug` adds tokens, timing, and
+cost per request, with the provider that served it on OpenRouter, where
+`--cheapest` sends requests to the two cheapest providers that keep no
+data. `/compact` summarizes the conversation on request
+([compaction.md](compaction.md)). Cost is the billed amount when the
+endpoint reports it, else an estimate from the model's price
+([config.md](config.md#cost)).
 
 ## Approvals
 

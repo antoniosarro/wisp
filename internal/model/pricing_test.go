@@ -30,6 +30,7 @@ func TestPricingCost(t *testing.T) {
 }
 
 func TestPricingString(t *testing.T) {
+	perToken := []float64{0.00000029, 0.00000114} // as OpenRouter lists them, scaled at run time
 	for _, c := range []struct {
 		p    Pricing
 		want string
@@ -40,6 +41,8 @@ func TestPricingString(t *testing.T) {
 		// Fractional and tiny rates keep every digit instead of rounding.
 		{Pricing{Input: 0.625, Output: 0.05}, "$0.625 in · $0.05 out per 1M"},
 		{Pricing{Input: 0.0375, Output: 0.15}, "$0.0375 in · $0.15 out per 1M"},
+		// Per-token prices scaled to per-million carry float noise.
+		{Pricing{Input: perToken[0] * 1e6, Output: perToken[1] * 1e6}, "$0.29 in · $1.14 out per 1M"},
 	} {
 		if got := c.p.String(); got != c.want {
 			t.Errorf("%+v.String() = %q, want %q", c.p, got, c.want)

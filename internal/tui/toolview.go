@@ -44,6 +44,12 @@ func renderToolOutput(name string, args json.RawMessage, result string, failed b
 		}
 		_ = json.Unmarshal(args, &f)
 		return renderCard(styleToolDetail.Render(f.URL), text, width, styleToolCard)
+	case name == "web_search":
+		var s struct {
+			Query string `json:"query"`
+		}
+		_ = json.Unmarshal(args, &s)
+		return renderCard(styleToolDetail.Render(s.Query), text, width, styleToolCard)
 	case name == "grep":
 		return renderGrepMatches(text)
 	case name == "read":

@@ -26,6 +26,7 @@ type approvalArgs struct {
 	New        string `json:"new_string"`
 	ReplaceAll bool   `json:"replace_all"`
 	URL        string `json:"url"`
+	Query      string `json:"query"`
 	Edits      []struct {
 		Old        string `json:"old_string"`
 		New        string `json:"new_string"`
@@ -60,6 +61,8 @@ func permissionDetails(name string, args json.RawMessage, workDir string) string
 		body = strings.Join(parts, "\n\n")
 	case "fetch":
 		head, body = "wants to download a web page", styleCommand.Render(a.URL)
+	case "web_search":
+		head, body = "wants to search the web", styleCommand.Render(a.Query)
 	case "write":
 		head, body = writeSummary(raw.Path, a), writePreview(raw.Path, a.Content)
 	default:

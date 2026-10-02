@@ -34,7 +34,7 @@ graph TD
 | `internal/model` | The provider contract (`Provider`, `Catalog`, `Info`, `Pricing`) |
 | `internal/model/openaicompat` | The OpenAI-compatible client: streaming, reasoning, retries, model discovery ([model-provider.md](model-provider.md)) |
 | `internal/tool` | The `Tool` interface, registry, concurrent dispatch, and the output budget ([tools.md](tools.md)) |
-| `internal/tool/builtin` | read, ls, glob, grep, todo, write, edit, multi_edit, bash, fetch |
+| `internal/tool/builtin` | read, ls, glob, grep, todo, write, edit, multi_edit, bash, fetch, web_search |
 | `internal/credential` | Which paths hold credentials, for the tools and the permission rules ([permissions.md](permissions.md#credentials)) |
 | `internal/permission` | Approval prompts and session "always allow" rules ([permissions.md](permissions.md)) |
 | `internal/agent` | Sub-agents: separate loops behind the `agent` tool ([subagents.md](subagents.md)) |

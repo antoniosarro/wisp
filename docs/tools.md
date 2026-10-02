@@ -43,6 +43,7 @@ type CallRisk interface {
 | `multi_edit` | Several replacements in one file, all or nothing | Yes |
 | `bash` | Run a non-interactive command | Yes |
 | `fetch` | Download an http(s) URL as text | Yes |
+| `web_search` | Search the web: titles, URLs and snippets; only with `--search-url` | Yes |
 | `agent` | Delegate a task to a configured sub-agent ([subagents.md](subagents.md)) | No; its calls ask |
 | `tool_search` | Find MCP tools and load their definitions into the conversation ([mcp.md](mcp.md)) | No |
 | `mcp_call` | Call an MCP tool found with `tool_search` | Unless the MCP tool is read-only |
@@ -145,6 +146,25 @@ matching calls for the session.
   itself, so wisp resolves it first and refuses a local address. A host
   that doesn't resolve locally is left to the proxy, since on networks
   that reach the web only through one, outside names often don't.
+
+### Searching the web: `web_search`
+
+- **Only with an endpoint.** `--search-url URL` (or `$WISP_SEARCH_URL`)
+  sets where searches go. Without one the tool doesn't exist, so it costs
+  no prompt tokens and can't fail on every call.
+- **Providers.** Any URL is a SearXNG instance, which needs no key. Set it
+  to `https://api.search.brave.com/res/v1/web/search` for Brave Search,
+  with its key in `$WISP_SEARCH_KEY`.
+- **Results.** Up to 5 by default (`count`, at most 10): title, URL, and a
+  snippet of at most 300 bytes as plain text. The model reads a page with
+  `fetch`, which checks its address as usual.
+- **Asks first.** The query leaves the machine, and the model writes it.
+  "Always allow" covers every search in the session.
+- **The endpoint is yours.** It isn't held to `fetch`'s address checks, so
+  a SearXNG on `localhost` works: you set it, the model can't change it.
+
+Setting up SearXNG (Docker, or natively on NixOS) and Brave Search is in
+[web-search.md](web-search.md).
 
 ## Credentials and isolation
 

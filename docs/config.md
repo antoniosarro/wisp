@@ -68,6 +68,7 @@ from the `/models` listing and from local servers' native endpoints
 | `--price IN,OUT[,CACHED_IN]` | `$WISP_PRICE`, else the endpoint's | Model price per million tokens, for [cost](#cost) |
 | `--provider NAME` | `$WISP_PROVIDER` | OpenRouter: pin every request to one provider |
 | `--cheapest` | | OpenRouter: route to the two cheapest zero-retention providers |
+| `--search-url URL` | `$WISP_SEARCH_URL` | Endpoint of the `web_search` tool: SearXNG, or Brave Search's API with `$WISP_SEARCH_KEY` ([tools.md](tools.md#searching-the-web-web_search)); without one there is no `web_search` |
 | `--fetch-allow LIST` | `$WISP_FETCH_ALLOW` | Local IPs or CIDR prefixes `fetch` may reach, comma-separated ([tools.md](tools.md#the-web-fetch)) |
 | `--resume ID` | | Continue a session ([session.md](session.md)) |
 | `--sessions` | | List this directory's recent sessions and exit |
@@ -89,6 +90,7 @@ from the `/models` listing and from local servers' native endpoints
 | `WISP_BASE_URL`, `WISP_API_KEY`, `WISP_MODEL` | Defaults for `--base-url`, `--api-key`, `--model` |
 | `WISP_PROVIDER`, `WISP_PRICE`, `WISP_EFFORT` | Defaults for `--provider`, `--price`, `--effort` |
 | `WISP_FETCH_ALLOW` | Default for `--fetch-allow` |
+| `WISP_SEARCH_URL`, `WISP_SEARCH_KEY` | Default for `--search-url`; Brave Search's key |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | Proxy for `fetch` |
 | `WISP_THEME=light` | Light palette; the default is dark |
 | `WISP_LOGO=text` | Text logo on the splash, even on kitty and Ghostty |

@@ -35,7 +35,8 @@ core and no framework around it.
   takes, from `none` to `max`, read from llama.cpp's chat template or
   OpenRouter's model list.
 - **Built-in tools.** `read`, `ls`, `glob`, `grep`, `write`, `edit`,
-  `multi_edit`, `bash`, `fetch`, and a `todo` list. Reads run in parallel,
+  `multi_edit`, `bash`, `fetch`, `web_search` (with a SearXNG or Brave
+  Search endpoint), and a `todo` list. Reads run in parallel,
   and output is capped so one big file can't flood the context.
 - **Approvals you can read.** Commands, diffs, and new files are shown
   before they run, with control characters made visible, and a write
@@ -207,7 +208,8 @@ access, so review what you allow, and run
 ## Documentation
 
 - [Using wisp](docs/usage.md) · [Configuration](docs/config.md) ·
-  [Tools](docs/tools.md) · [Permissions](docs/permissions.md)
+  [Tools](docs/tools.md) · [Permissions](docs/permissions.md) ·
+  [Web search](docs/web-search.md)
 - [Sub-agents](docs/subagents.md) · [MCP servers](docs/mcp.md) ·
   [Tracing](docs/tracing.md)
 - How it works: [Architecture](docs/architecture.md) ·

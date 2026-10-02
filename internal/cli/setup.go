@@ -49,6 +49,8 @@ type Config struct {
 	Price         model.Pricing  // from --price; overrides what the endpoint reports
 	Effort        string         // from --effort: the reasoning effort level, "" for the model's default
 	FetchAllow    []netip.Prefix // from --fetch-allow: non-public addresses fetch may reach
+	SearchURL     string         // from --search-url: the web_search endpoint; "" for no web_search
+	SearchKey     string         // $WISP_SEARCH_KEY: Brave Search's key
 }
 
 // newProvider is the client for cfg's endpoint and model.
@@ -57,6 +59,29 @@ func newProvider(cfg Config) *openaicompat.Client {
 		BaseURL: cfg.BaseURL, Model: cfg.ModelName, APIKey: cfg.APIKey, Provider: cfg.Provider, Cheapest: cfg.Cheapest,
 		AppName: "Wisp@" + version.Version, AppURL: repoURL,
 	}, nil)
+}
+
+// builtinTools are the tools wisp itself provides for cfg. vision is the
+// read tool's image switch.
+func builtinTools(cfg Config, vision *atomic.Bool) []tool.Tool {
+	builtins := []tool.Tool{
+		builtin.ReadTool{Vision: vision},
+		builtin.LsTool{},
+		builtin.GlobTool{},
+		builtin.GrepTool{},
+		builtin.TodoTool{},
+		builtin.WriteTool{},
+		builtin.EditTool{},
+		builtin.MultiEditTool{},
+		builtin.BashTool{},
+		builtin.FetchTool{Client: builtin.NewFetchClient(cfg.FetchAllow)},
+	}
+	// Without an endpoint web_search doesn't exist: no schema in every
+	// request, and no call that can only fail.
+	if cfg.SearchURL != "" {
+		builtins = append(builtins, builtin.WebSearchTool{Endpoint: cfg.SearchURL, Key: cfg.SearchKey})
+	}
+	return builtins
 }
 
 // newLoop wires the provider, the permission-gated built-in and MCP
@@ -73,18 +98,7 @@ func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision 
 	if cfg.SkipPermissions {
 		prompter = permission.AllowAll{}
 	}
-	tools := permission.GateAll(prompter,
-		builtin.ReadTool{Vision: vision},
-		builtin.LsTool{},
-		builtin.GlobTool{},
-		builtin.GrepTool{},
-		builtin.TodoTool{},
-		builtin.WriteTool{},
-		builtin.EditTool{},
-		builtin.MultiEditTool{},
-		builtin.BashTool{},
-		builtin.FetchTool{Client: builtin.NewFetchClient(cfg.FetchAllow)},
-	)
+	tools := permission.GateAll(prompter, builtinTools(cfg, vision)...)
 	workDir, err := os.Getwd()
 	if err != nil {
 		return nil, nil, err

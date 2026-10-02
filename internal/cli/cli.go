@@ -68,6 +68,7 @@ func run() error {
 		cfg.FetchAllow, err = builtin.ParseFetchAllow(v)
 		return err
 	})
+	flag.StringVar(&cfg.SearchURL, "search-url", os.Getenv("WISP_SEARCH_URL"), "endpoint of the web_search tool: a SearXNG instance, e.g. http://localhost:8888, or "+builtin.BraveSearchURL+" with $WISP_SEARCH_KEY (default: $WISP_SEARCH_URL; without one there is no web_search)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	listSessions := flag.Bool("sessions", false, "list recent sessions in this working directory and exit")
 	listModels := flag.Bool("models", false, "list the endpoint's models and what it reports about them, then exit")
@@ -88,6 +89,10 @@ func run() error {
 			return fmt.Errorf("$WISP_PRICE: %w", err)
 		}
 		cfg.Price = p
+	}
+	cfg.SearchKey = os.Getenv("WISP_SEARCH_KEY")
+	if cfg.SearchURL == builtin.BraveSearchURL && cfg.SearchKey == "" {
+		return errors.New("--search-url is Brave Search: set its key in $WISP_SEARCH_KEY")
 	}
 	if env := os.Getenv("WISP_FETCH_ALLOW"); env != "" && cfg.FetchAllow == nil {
 		allow, err := builtin.ParseFetchAllow(env)

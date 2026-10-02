@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestNewerRelease(t *testing.T) {
@@ -34,7 +35,23 @@ func TestNewerRelease(t *testing.T) {
 		}
 	}
 	if asked != 1 {
-		t.Errorf("asked GitHub %d times, want once a day", asked)
+		t.Errorf("asked GitHub %d times, want once within the hour", asked)
+	}
+}
+
+// Installed the day before a release: the answer cached at install time
+// names the installed version, and must not hide the new one for a day.
+func TestNewerReleaseSameDay(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name": "v0.2.0"}`))
+	}))
+	defer srv.Close()
+	setReleaseURL(t, srv.URL)
+	saveState(state{LatestRelease: "v0.1.0", ReleaseCheck: time.Now().Add(-2 * time.Hour)})
+
+	if got := newerRelease(context.Background(), "0.1.0"); got != "0.2.0" {
+		t.Errorf("newerRelease = %q two hours after the last check, want 0.2.0", got)
 	}
 }
 

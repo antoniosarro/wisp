@@ -167,6 +167,6 @@ asleep after a quiet minute. Some words in a message make it react (try
 
 ## Update check
 
-Release builds ask GitHub for the newest release at most once a day, in
+Release builds ask GitHub for the newest release at most once an hour, in
 the background, and show "Update available" on the splash when there is a
 newer one. Development builds and Nix builds don't check.

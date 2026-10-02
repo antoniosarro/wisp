@@ -16,9 +16,15 @@ import (
 // releaseURL is GitHub's newest non-prerelease release of wisp.
 var releaseURL = "https://api.github.com/repos/antoniosarro/wisp/releases/latest"
 
+// releaseCheckEvery is how long an answer from GitHub is reused. A day was
+// too long: a release made the day someone installed the one before it
+// went unnoticed until the next day. Hourly stays far below GitHub's limit
+// of 60 requests an hour without a token.
+const releaseCheckEvery = time.Hour
+
 // newerRelease returns the version of a release newer than current, or "".
-// It asks GitHub at most once a day and remembers the answer in the state
-// file; failing to ask (offline, no releases yet) just shows nothing.
+// It asks GitHub at most once every releaseCheckEvery and remembers the
+// answer in the state file; failing to ask (offline, no releases yet) just shows nothing.
 // Builds not made from a release tag (go run's "dev", go build's and
 // packages' 0.0.0 versions before the first tag) never check: there is
 // nothing to compare.
@@ -28,7 +34,7 @@ func newerRelease(ctx context.Context, current string) string {
 		return ""
 	}
 	s := loadState()
-	if time.Since(s.ReleaseCheck) > 24*time.Hour {
+	if time.Since(s.ReleaseCheck) > releaseCheckEvery {
 		if tag, err := latestRelease(ctx); err == nil {
 			s = loadState() // the TUI may have saved it meanwhile
 			s.LatestRelease, s.ReleaseCheck = tag, time.Now()

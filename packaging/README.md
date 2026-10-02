@@ -47,8 +47,8 @@ and Arch packages at the tag and publishes the GitHub release, with the
 tag's message as the notes.
 
 On launch, wisp asks GitHub for the newest release
-(`api.github.com/repos/antoniosarro/wisp/releases/latest`, at most once a
-day, in the background) and, if it is newer, shows "Update available" on
+(`api.github.com/repos/antoniosarro/wisp/releases/latest`, at most once an
+hour, in the background) and, if it is newer, shows "Update available" on
 the splash. Only builds made at or past a tag check: `dev`, pseudo-versions
 before the first tag, and packages from before the first tag never do. Nix
 builds report the version in `VERSION` (flakes can't see tags), which

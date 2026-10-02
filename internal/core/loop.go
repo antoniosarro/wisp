@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -40,6 +41,18 @@ const wrapUpReminder = "You have reached the step limit for this turn. Do not ca
 // RepeatedCallContent answers a read-only call identical to one already run
 // in the turn, instead of running it again.
 const RepeatedCallContent = "Not run again: an identical call already ran in this turn, and no tool that changes anything has run since, so its result above still holds. Use that result, or try something different."
+
+// loopingReminder follows a step that made exactly the calls of the step
+// before it.
+const loopingReminder = "You just made exactly the same tool calls as in your previous step, with the same arguments: you are repeating yourself. Their results will not change. Do something different, or give your final answer."
+
+// LoopStoppedContent answers the calls of a third identical step in a row,
+// which end the turn instead of running.
+const LoopStoppedContent = "Not run: the same tool calls three times in a row. The turn was stopped."
+
+// ErrRepeating ends a turn whose model made the same tool calls three
+// steps in a row, after being told it was repeating itself.
+var ErrRepeating = errors.New("stopped: the model made the same tool calls three times in a row")
 
 // MessageStore persists messages as they're appended to History.
 type MessageStore interface {
@@ -135,6 +148,7 @@ func (l *Loop) Run(ctx context.Context, userInput string) (answer string, err er
 		return "", err
 	}
 	reminded := false
+	lastStep, repeats := "", 0 // the previous step's calls (stepKey), and how many steps in a row made them
 
 	maxIter := l.MaxIterations
 	if maxIter <= 0 {
@@ -174,8 +188,24 @@ func (l *Loop) Run(ctx context.Context, userInput string) (answer string, err er
 			return text, nil
 		}
 
+		// The same calls step after step: say so once, then stop. Only
+		// consecutive steps count, so "test, edit, test" is progress.
+		step := stepKey(toolCalls)
+		if step == lastStep {
+			repeats++
+		} else {
+			lastStep, repeats = step, 0
+		}
+		if repeats >= 2 {
+			return "", l.stopRepeating(toolCalls)
+		}
 		if err := l.dispatchAndAppend(ctx, toolCalls); err != nil {
 			return "", err
+		}
+		if repeats == 1 {
+			if err := l.appendReminder(loopingReminder); err != nil {
+				return "", err
+			}
 		}
 	}
 
@@ -467,6 +497,27 @@ func (l *Loop) dispatchAndAppend(ctx context.Context, toolCalls []model.ToolCall
 		}
 	}
 	return nil
+}
+
+// stopRepeating answers calls with LoopStoppedContent instead of running
+// them, so the history stays valid, and returns ErrRepeating.
+func (l *Loop) stopRepeating(calls []model.ToolCall) error {
+	for _, call := range calls {
+		if err := l.appendAndPersist(model.Message{Role: model.RoleTool, Content: LoopStoppedContent, ToolCallID: call.ID, IsError: true}); err != nil {
+			return err
+		}
+	}
+	return ErrRepeating
+}
+
+// stepKey identifies a step by its calls, in any order (callKey).
+func stepKey(calls []model.ToolCall) string {
+	keys := make([]string, len(calls))
+	for i, call := range calls {
+		keys[i] = callKey(call)
+	}
+	slices.Sort(keys)
+	return strings.Join(keys, "\x01")
 }
 
 // callKey identifies a call by tool and arguments, the arguments

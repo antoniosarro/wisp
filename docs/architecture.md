@@ -87,6 +87,9 @@ sequenceDiagram
   so changes apply in the order the model asked for them.
 - **Reasoning** is shown, traced, and counted, but not saved in the
   history or sent back.
+- **Repeating steps.** A step with exactly the calls of the one before
+  gets a note; a third in a row ends the turn
+  ([tools.md](tools.md#dispatch)).
 - **The step limit.** After 100 round trips without a final answer
   (`--max-iterations`), the model is asked for a summary of its progress
   without tools, and that ends the turn.

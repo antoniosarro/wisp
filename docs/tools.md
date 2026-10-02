@@ -183,6 +183,13 @@ matching calls for the session.
   each new user turn. Small models otherwise loop on the same call (13
   identical `accounts_list` calls in one traced turn), and each repeat puts
   the same output in context again.
+- **Repeated steps.** When a step makes exactly the tool calls of the step
+  before it (the same tools with the same arguments, in any order), they
+  run, and a note tells the model it is repeating itself. A third such
+  step in a row ends the turn: its calls get a "not run" result, and the
+  turn fails with "stopped: the model made the same tool calls three times
+  in a row". Only consecutive steps count, so "test, edit, test" is
+  progress, and risky calls are covered too.
 
 ## Git awareness
 

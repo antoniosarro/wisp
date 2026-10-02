@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -130,14 +131,14 @@ func TestLoopStreamError(t *testing.T) {
 }
 
 func TestLoopMaxIterations(t *testing.T) {
-	// A provider that always requests the same tool call, never finishing.
-	loopingTurn := []model.Event{
-		{Kind: model.EventToolCall, ToolCall: &model.ToolCall{ID: "c", Name: "echo", Args: json.RawMessage(`{}`)}},
-		{Kind: model.EventDone},
-	}
+	// A provider that keeps calling tools, never finishing; each call
+	// differs, or the loop detection would end the turn first.
 	turns := make([][]model.Event, 5)
 	for i := range turns {
-		turns[i] = loopingTurn
+		turns[i] = []model.Event{
+			{Kind: model.EventToolCall, ToolCall: &model.ToolCall{ID: "c", Name: "echo", Args: json.RawMessage(fmt.Sprintf(`{"i":%d}`, i))}},
+			{Kind: model.EventDone},
+		}
 	}
 	p := &testutil.ScriptedProvider{Turns: turns}
 	l := &Loop{Provider: p, Tools: tool.NewRegistry(testutil.EchoTool{}), MaxIterations: 3}
@@ -427,5 +428,58 @@ func TestLoopDropsImagesFromEarlierTurns(t *testing.T) {
 	}
 	if got := l.History[2]; got.Images != nil || !strings.Contains(got.Content, "no longer attached") {
 		t.Errorf("earlier tool result = %+v, want its image dropped with a note", got)
+	}
+}
+
+// Small models call the same tools with the same arguments step after
+// step. The second identical step gets a note; a third ends the turn
+// without running. Only consecutive steps count: an edit between two test
+// runs is progress.
+func TestRepeatingStepsEndTheTurn(t *testing.T) {
+	step := func(cs ...model.ToolCall) []model.Event {
+		var events []model.Event
+		for i := range cs {
+			events = append(events, model.Event{Kind: model.EventToolCall, ToolCall: &cs[i]})
+		}
+		return append(events, model.Event{Kind: model.EventDone})
+	}
+	test := func(id string) model.ToolCall {
+		return model.ToolCall{ID: id, Name: "bash", Args: json.RawMessage(`{"command":"go test ./..."}`)}
+	}
+	edit := func(id, to string) model.ToolCall {
+		return model.ToolCall{ID: id, Name: "edit", Args: json.RawMessage(`{"new":"` + to + `"}`)}
+	}
+	p := &testutil.ScriptedProvider{Turns: [][]model.Event{
+		step(test("1")), step(edit("2", "a")), step(test("3")), step(edit("4", "b")), step(test("5")), // progress
+		step(test("6")), // the same step again: noted
+		step(test("7")), // and again: stopped, not run
+	}}
+	var runs, edits int
+	l := &Loop{Provider: p, Tools: tool.NewRegistry(countingTool{name: "bash", risky: true, runs: &runs}, countingTool{name: "edit", risky: true, runs: &edits})}
+	_, err := l.Run(context.Background(), "fix the tests")
+	if !errors.Is(err, ErrRepeating) {
+		t.Fatalf("Run = %v, want ErrRepeating", err)
+	}
+	if runs != 4 || edits != 2 || p.Calls != 7 {
+		t.Errorf("bash ran %d times, edit %d, %d requests; want 4, 2 and 7", runs, edits, p.Calls)
+	}
+	var notes, stopped int
+	for _, m := range l.History {
+		switch {
+		case m.Role == model.RoleUser && strings.Contains(m.Content, "repeating yourself"):
+			notes++
+		case m.Role == model.RoleTool && m.Content == LoopStoppedContent:
+			stopped++
+			if m.ToolCallID != "7" || !m.IsError {
+				t.Errorf("stopped result %+v, want call 7's, as an error", m)
+			}
+		}
+	}
+	if notes != 1 || stopped != 1 {
+		t.Errorf("%d notes and %d stopped results, want one of each", notes, stopped)
+	}
+	last := l.History[len(l.History)-1]
+	if last.Role != model.RoleTool || last.ToolCallID != "7" {
+		t.Errorf("history ends with %+v: every call needs a result", last)
 	}
 }

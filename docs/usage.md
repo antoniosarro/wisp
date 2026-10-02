@@ -135,6 +135,9 @@ diff, or the new file's content:
   status` commands but not `git push`, `fetch` covers the host, and edits
   cover the working directory. [permissions.md](permissions.md) has the
   details.
+- **The chat stays scrollable.** While a request waits, ↑/↓ and the wheel
+  over the prompt scroll its details; PgUp/PgDown and the wheel over the
+  chat scroll the chat, and Ctrl+End jumps to the latest output.
 - **Keys count only after a pause.** An answer key counts once the prompt
   has been visible and you have paused typing for 0.4 s, so a prompt that
   appears mid-sentence can't take a letter as an answer.

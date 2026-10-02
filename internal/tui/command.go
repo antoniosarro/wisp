@@ -44,7 +44,8 @@ var helpSections = []helpSection{
 		{"n", "deny"},
 		{"t", "deny with a note telling wisp what to do instead"},
 		{"esc", "cancel the turn"},
-		{"↑/↓, pgup/pgdown", "scroll the details"},
+		{"↑/↓", "scroll the details; the wheel over the box does too"},
+		{"pgup/pgdown", "scroll the chat, as does the wheel over it"},
 		{"", "The key hints can also be clicked. Keys typed while you were typing go to your draft."},
 	}},
 	{"Notes", [][2]string{

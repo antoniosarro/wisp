@@ -234,6 +234,14 @@ func (m *Model) handlePermissionKey(msg tea.KeyMsg, typing bool) tea.Cmd {
 			return nil
 		}
 		return m.updateInput(msg)
+	case "pgup", "pgdown", "ctrl+u", "ctrl+d":
+		// The chat stays readable while a request waits; ↑/↓ scroll the
+		// request's details.
+		return m.scroll(msg)
+	case "ctrl+end":
+		m.autoScroll = true
+		m.viewport.GotoBottom()
+		return nil
 	default:
 		if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
 			return m.updateInput(msg)

@@ -353,3 +353,45 @@ func TestPrompterThroughGate(t *testing.T) {
 		t.Errorf("after allowing:\n%s", view)
 	}
 }
+
+// The approval box took every scroll, so the chat above it stayed put
+// until the request was answered. The wheel scrolls what is under the
+// pointer and PgUp/PgDn the chat; ↑/↓ still scroll the details.
+func TestChatScrollsWhileApprovalWaits(t *testing.T) {
+	m, _ := newTestModel(t, &testutil.ScriptedProvider{})
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	for i := range 80 {
+		m.notify(fmt.Sprintf("line %d", i))
+	}
+	args, _ := json.Marshal(map[string]string{"command": strings.Repeat("echo x\n", 60)})
+	m.Update(PermissionRequestMsg{Name: "bash", Args: args, Reply: make(chan Answer, 1)})
+	m.viewport.GotoBottom()
+	chat, details := m.viewport.YOffset, m.approval.YOffset
+	if chat == 0 || m.approval.TotalLineCount() <= m.approval.VisibleLineCount() {
+		t.Fatalf("chat offset %d, details %d of %d lines: nothing to scroll", chat, m.approval.VisibleLineCount(), m.approval.TotalLineCount())
+	}
+
+	m.Update(tea.MouseMsg{X: 10, Y: 2, Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress})
+	if m.viewport.YOffset >= chat || m.approval.YOffset != details {
+		t.Errorf("wheel over the chat: chat %d → %d, details %d → %d; want the chat scrolled", chat, m.viewport.YOffset, details, m.approval.YOffset)
+	}
+	boxTop := m.height - strings.Count(m.footer(), "\n") - 1
+	m.Update(tea.MouseMsg{X: 10, Y: boxTop + 2, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+	if m.approval.YOffset <= details {
+		t.Errorf("wheel over the box: details %d → %d, want them scrolled", details, m.approval.YOffset)
+	}
+
+	chat = m.viewport.YOffset
+	m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if m.viewport.YOffset >= chat {
+		t.Errorf("pgup: chat %d → %d, want it scrolled", chat, m.viewport.YOffset)
+	}
+	details = m.approval.YOffset
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.approval.YOffset >= details {
+		t.Errorf("up: details %d → %d, want them scrolled", details, m.approval.YOffset)
+	}
+	if len(m.pending) != 1 {
+		t.Error("scrolling answered the request")
+	}
+}

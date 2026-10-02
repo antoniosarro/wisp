@@ -56,6 +56,11 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 				return nil
 			}
 		}
+		// The wheel scrolls what is under the pointer: the request's details
+		// in the approval box, the chat above it.
+		if tea.MouseEvent(msg).IsWheel() && msg.Y < m.height-strings.Count(m.footer(), "\n")-1 {
+			return m.scroll(msg)
+		}
 		var cmd tea.Cmd
 		m.approval, cmd = m.approval.Update(msg)
 		return cmd

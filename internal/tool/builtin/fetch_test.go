@@ -1,9 +1,12 @@
 package builtin
 
 import (
+	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 )
@@ -14,6 +17,10 @@ func fetchURL(t *testing.T, f FetchTool, url, extra string) (string, bool) {
 	res := run(t, f, fmt.Sprintf(`{"url":%q%s}`, url, extra))
 	return res.Content, res.IsError
 }
+
+// localFetch can reach the loopback test servers, which the default client
+// refuses.
+var localFetch = FetchTool{Client: &http.Client{CheckRedirect: sameHostRedirect}}
 
 func TestFetch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,11 +85,101 @@ func TestFetchRedirectsStayOnHost(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if got, _ := fetchURL(t, FetchTool{}, srv.URL+"/same", ""); !strings.Contains(got, "fine") {
+	if got, _ := fetchURL(t, localFetch, srv.URL+"/same", ""); !strings.Contains(got, "fine") {
 		t.Errorf("same-host redirect not followed: %q", got)
 	}
-	if got, _ := fetchURL(t, FetchTool{}, srv.URL+"/away", ""); strings.Contains(got, "secret") || !strings.Contains(got, "redirects to "+other.URL+"/latest/meta-data") {
+	if got, _ := fetchURL(t, localFetch, srv.URL+"/away", ""); strings.Contains(got, "secret") || !strings.Contains(got, "redirects to "+other.URL+"/latest/meta-data") {
 		t.Errorf("cross-host redirect: %q", got)
+	}
+}
+
+// The default client refuses non-public addresses when it connects, whatever
+// name led there.
+func TestFetchRefusesPrivateAddresses(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, "secret")
+	}))
+	defer srv.Close()
+	_, port, _ := net.SplitHostPort(srv.Listener.Addr().String())
+	for _, u := range []string{srv.URL, "http://localhost:" + port} {
+		_, err := FetchTool{}.Run(t.Context(), json.RawMessage(fmt.Sprintf(`{"url":%q}`, u)))
+		if err == nil || !strings.Contains(err.Error(), "not a public address") {
+			t.Errorf("%s: err = %v", u, err)
+		}
+	}
+
+	for addr, refused := range map[string]bool{
+		"127.0.0.1":              true,
+		"::1":                    true,
+		"0.0.0.0":                true,
+		"10.1.2.3":               true,
+		"172.16.0.1":             true,
+		"192.168.1.1":            true,
+		"169.254.169.254":        true,
+		"100.100.100.200":        true,
+		"fe80::1":                true,
+		"fd00:ec2::254":          true,
+		"::ffff:127.0.0.1":       true,
+		"::ffff:169.254.169.254": true,
+		"1.1.1.1":                false,
+		"2606:4700::1111":        false,
+	} {
+		if err := checkAddr(netip.MustParseAddr(addr), nil); (err != nil) != refused {
+			t.Errorf("%s: err = %v, want refused %v", addr, err, refused)
+		}
+	}
+}
+
+// --fetch-allow lets listed addresses through, and only those.
+func TestFetchAllow(t *testing.T) {
+	allow, err := ParseFetchAllow(" 192.168.1.0/24, 10.0.0.5,,::ffff:127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for addr, refused := range map[string]bool{
+		"192.168.1.77":    false,
+		"192.168.2.1":     true,
+		"10.0.0.5":        false,
+		"10.0.0.6":        true,
+		"127.0.0.1":       false,
+		"169.254.169.254": true,
+	} {
+		if err := checkAddr(netip.MustParseAddr(addr), allow); (err != nil) != refused {
+			t.Errorf("%s: err = %v, want refused %v", addr, err, refused)
+		}
+	}
+	if _, err := ParseFetchAllow("nas.lan"); err == nil {
+		t.Error("a hostname was accepted")
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = fmt.Fprint(w, "homelab")
+	}))
+	defer srv.Close()
+	if got, _ := fetchURL(t, FetchTool{Client: NewFetchClient(allow)}, srv.URL, ""); got != "homelab" {
+		t.Errorf("allowed address: %q", got)
+	}
+}
+
+// A proxy from the environment is used, and trusted though it is local; the
+// host it is asked for is checked before the request goes to it.
+func TestFetchThroughProxy(t *testing.T) {
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = fmt.Fprint(w, "via proxy: "+r.URL.String())
+	}))
+	defer proxy.Close()
+	t.Setenv("HTTP_PROXY", proxy.URL)
+	t.Setenv("NO_PROXY", "")
+	f := FetchTool{Client: NewFetchClient(nil)}
+
+	if got, _ := fetchURL(t, f, "http://1.1.1.1/page", ""); got != "via proxy: http://1.1.1.1/page" {
+		t.Errorf("public host through the proxy: %q", got)
+	}
+	_, err := f.Run(t.Context(), json.RawMessage(`{"url":"http://10.0.0.1/"}`))
+	if err == nil || !strings.Contains(err.Error(), "not a public address") {
+		t.Errorf("private host through the proxy: err = %v", err)
 	}
 }
 
@@ -107,16 +204,16 @@ func TestFetchLimits(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if got, _ := fetchURL(t, FetchTool{}, srv.URL+"/big", `,"max_bytes":1000000000`); len(got) > maxFetchBytes+500 || !strings.Contains(got, "download stopped at 5 MB") {
+	if got, _ := fetchURL(t, localFetch, srv.URL+"/big", `,"max_bytes":1000000000`); len(got) > maxFetchBytes+500 || !strings.Contains(got, "download stopped at 5 MB") {
 		t.Errorf("big page: %d bytes, want at most %d plus notes including the download cutoff", len(got), maxFetchBytes)
 	}
-	if got, isErr := fetchURL(t, FetchTool{}, srv.URL+"/untyped-text", ""); isErr || got != "hello plain text" {
+	if got, isErr := fetchURL(t, localFetch, srv.URL+"/untyped-text", ""); isErr || got != "hello plain text" {
 		t.Errorf("untyped text = %q, %v", got, isErr)
 	}
-	if got, isErr := fetchURL(t, FetchTool{}, srv.URL+"/untyped-binary", ""); !isErr || !strings.Contains(got, "not text") {
+	if got, isErr := fetchURL(t, localFetch, srv.URL+"/untyped-binary", ""); !isErr || !strings.Contains(got, "not text") {
 		t.Errorf("untyped binary = %q, %v; want it refused", got, isErr)
 	}
-	if got, isErr := fetchURL(t, FetchTool{}, srv.URL+"/error", ""); !isErr || len(got) > maxErrorText+200 {
+	if got, isErr := fetchURL(t, localFetch, srv.URL+"/error", ""); !isErr || len(got) > maxErrorText+200 {
 		t.Errorf("error page: %d bytes, error %v", len(got), isErr)
 	}
 }

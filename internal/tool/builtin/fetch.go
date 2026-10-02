@@ -9,9 +9,13 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -19,6 +23,7 @@ import (
 	"github.com/antoniosarro/wisp/internal/textfmt"
 	"github.com/antoniosarro/wisp/internal/tool"
 	"github.com/antoniosarro/wisp/internal/version"
+	"golang.org/x/net/http/httpproxy"
 )
 
 const (
@@ -30,8 +35,8 @@ const (
 	fetchTimeout      = 30 * time.Second
 )
 
-// FetchTool retrieves web pages as text. Client defaults to one with a
-// timeout that follows redirects only within the host (sameHostRedirect).
+// FetchTool retrieves web pages as text. Client defaults to
+// NewFetchClient(nil).
 type FetchTool struct {
 	Client *http.Client
 }
@@ -68,6 +73,106 @@ func sameHostRedirect(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
+// NewFetchClient returns the client fetch uses. It connects only to public
+// addresses and those in allow (checkAddr), follows redirects only within
+// the host (sameHostRedirect), and goes through the proxy the environment
+// sets (HTTP_PROXY, HTTPS_PROXY, NO_PROXY), which it trusts.
+func NewFetchClient(allow []netip.Prefix) *http.Client {
+	proxyFor := httpproxy.FromEnvironment().ProxyFunc()
+	var proxies sync.Map // "host:port" of each proxy used, dialed unchecked
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.Proxy = func(req *http.Request) (*url.URL, error) {
+		p, err := proxyFor(req.URL)
+		if p == nil || err != nil {
+			return p, err
+		}
+		// The proxy resolves the host, out of the dial check's sight, so
+		// check what it resolves to here.
+		if err := checkHost(req.Context(), req.URL.Hostname(), allow); err != nil {
+			return nil, err
+		}
+		port := cmp.Or(p.Port(), map[string]string{"http": "80", "https": "443", "socks5": "1080", "socks5h": "1080"}[p.Scheme])
+		proxies.Store(net.JoinHostPort(p.Hostname(), port), true)
+		return p, nil
+	}
+	plain := &net.Dialer{Timeout: 10 * time.Second}
+	checked := &net.Dialer{Timeout: 10 * time.Second, Control: func(_, address string, _ syscall.RawConn) error {
+		ap, err := netip.ParseAddrPort(address)
+		if err != nil {
+			return err
+		}
+		return checkAddr(ap.Addr(), allow)
+	}}
+	tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if _, ok := proxies.Load(addr); ok {
+			return plain.DialContext(ctx, network, addr)
+		}
+		return checked.DialContext(ctx, network, addr)
+	}
+	return &http.Client{Timeout: fetchTimeout, CheckRedirect: sameHostRedirect, Transport: tr}
+}
+
+var defaultFetchClient = sync.OnceValue(func() *http.Client { return NewFetchClient(nil) })
+
+// cgnat is the shared address space, where some clouds put their metadata
+// service (Alibaba's 100.100.100.200).
+var cgnat = netip.MustParsePrefix("100.64.0.0/10")
+
+// checkAddr refuses loopback, private, link-local (the cloud metadata
+// address 169.254.169.254) and other non-public addresses, unless allow
+// holds them. The dialer runs it on the address being connected to, after
+// DNS, so a public name that resolves to a local address, or a redirect to
+// one, is refused as well.
+func checkAddr(ip netip.Addr, allow []netip.Prefix) error {
+	ip = ip.Unmap()
+	if ip.IsGlobalUnicast() && !ip.IsPrivate() && !cgnat.Contains(ip) {
+		return nil
+	}
+	for _, p := range allow {
+		if p.Contains(ip) {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s is not a public address; fetch reaches only public hosts and those --fetch-allow lists", ip)
+}
+
+// checkHost runs checkAddr on every address host resolves to. A host that
+// doesn't resolve is left to the proxy: where the web is reached only
+// through one, outside names often don't resolve locally.
+func checkHost(ctx context.Context, host string, allow []netip.Prefix) error {
+	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	if err != nil {
+		return nil
+	}
+	for _, ip := range ips {
+		if err := checkAddr(ip, allow); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ParseFetchAllow reads a comma-separated list of IP addresses and CIDR
+// prefixes, such as "192.168.1.0/24,10.0.0.5".
+func ParseFetchAllow(s string) ([]netip.Prefix, error) {
+	var allow []netip.Prefix
+	for f := range strings.SplitSeq(s, ",") {
+		if f = strings.TrimSpace(f); f == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(f)
+		if err != nil {
+			ip, err := netip.ParseAddr(f)
+			if err != nil {
+				return nil, fmt.Errorf("%q is not an IP address or CIDR prefix", f)
+			}
+			p = netip.PrefixFrom(ip.Unmap(), ip.Unmap().BitLen())
+		}
+		allow = append(allow, p.Masked())
+	}
+	return allow, nil
+}
+
 func (t FetchTool) Run(ctx context.Context, args json.RawMessage) (tool.Result, error) {
 	a, err := decodeArgs[struct {
 		URL      string `json:"url"`
@@ -82,10 +187,7 @@ func (t FetchTool) Run(ctx context.Context, args json.RawMessage) (tool.Result, 
 		return tool.Result{}, fmt.Errorf("url must be an absolute http or https URL")
 	}
 
-	client := t.Client
-	if client == nil {
-		client = &http.Client{Timeout: fetchTimeout, CheckRedirect: sameHostRedirect}
-	}
+	client := cmp.Or(t.Client, defaultFetchClient())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return tool.Result{}, err

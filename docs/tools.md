@@ -130,6 +130,21 @@ matching calls for the session.
   fetch that URL. That is a new call, approved for its own host, so an
   allowed host can't redirect to a local service or a cloud metadata
   address.
+- **Local addresses are refused.** `fetch` won't connect to loopback,
+  private, link-local (including the cloud metadata address
+  `169.254.169.254`) or shared (`100.64.0.0/10`) addresses. The check is
+  made on the address being connected to, after DNS, so a public name that
+  resolves to a local address is refused too.
+- **Your own network.** To reach services on your LAN or homelab, list
+  their addresses with `--fetch-allow` or `$WISP_FETCH_ALLOW`, as IPs or
+  CIDR prefixes: `--fetch-allow 192.168.1.0/24,10.0.0.5`. Names aren't
+  accepted; list the address they resolve to. Each host still asks before
+  the first fetch.
+- **Proxies.** `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` are followed, and
+  the proxy itself may be a local address. The proxy resolves the host
+  itself, so wisp resolves it first and refuses a local address. A host
+  that doesn't resolve locally is left to the proxy, since on networks
+  that reach the web only through one, outside names often don't.
 
 ## Credentials and isolation
 

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -45,8 +46,9 @@ type Config struct {
 	TrustProject  bool
 	MaxIterations int
 	Vision        bool
-	Price         model.Pricing // from --price; overrides what the endpoint reports
-	Effort        string        // from --effort: the reasoning effort level, "" for the model's default
+	Price         model.Pricing  // from --price; overrides what the endpoint reports
+	Effort        string         // from --effort: the reasoning effort level, "" for the model's default
+	FetchAllow    []netip.Prefix // from --fetch-allow: non-public addresses fetch may reach
 }
 
 // newProvider is the client for cfg's endpoint and model.
@@ -81,7 +83,7 @@ func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision 
 		builtin.EditTool{},
 		builtin.MultiEditTool{},
 		builtin.BashTool{},
-		builtin.FetchTool{},
+		builtin.FetchTool{Client: builtin.NewFetchClient(cfg.FetchAllow)},
 	)
 	workDir, err := os.Getwd()
 	if err != nil {

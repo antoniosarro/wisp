@@ -15,6 +15,7 @@ import (
 
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/termsafe"
+	"github.com/antoniosarro/wisp/internal/tool/builtin"
 	"github.com/antoniosarro/wisp/internal/version"
 )
 
@@ -63,6 +64,10 @@ func run() error {
 		cfg.Price, err = parsePrice(v)
 		return err
 	})
+	flag.Func("fetch-allow", "non-public addresses fetch may reach, as comma-separated IPs or CIDR prefixes, e.g. 192.168.1.0/24,10.0.0.5 (default: $WISP_FETCH_ALLOW)", func(v string) (err error) {
+		cfg.FetchAllow, err = builtin.ParseFetchAllow(v)
+		return err
+	})
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	listSessions := flag.Bool("sessions", false, "list recent sessions in this working directory and exit")
 	listModels := flag.Bool("models", false, "list the endpoint's models and what it reports about them, then exit")
@@ -83,6 +88,13 @@ func run() error {
 			return fmt.Errorf("$WISP_PRICE: %w", err)
 		}
 		cfg.Price = p
+	}
+	if env := os.Getenv("WISP_FETCH_ALLOW"); env != "" && cfg.FetchAllow == nil {
+		allow, err := builtin.ParseFetchAllow(env)
+		if err != nil {
+			return fmt.Errorf("$WISP_FETCH_ALLOW: %w", err)
+		}
+		cfg.FetchAllow = allow
 	}
 
 	if cfg.Effort != "" && !model.AllEfforts.Has(cfg.Effort) {

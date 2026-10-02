@@ -203,9 +203,12 @@ func writeContext(b *strings.Builder, c core.ContextStats, dim func(any) string)
 		row("window", "unknown")
 	} else {
 		row("window", shortTokens(c.Window))
+		row("used", fmt.Sprintf("%s (%.0f%%)", shortTokens(c.Used()), c.UsedPct()))
 		row("  fixed", shortTokens(c.Fixed))
-		row("  history", shortTokens(c.Budget)+" budget")
-		fmt.Fprintf(b, "%-11s %s %s\n", "used", debugBar(c.History, c.Budget, debugBarWidth), dim(fmt.Sprintf("%.0f%%", float64(c.History)/float64(max(1, c.Budget))*100)))
+		row("  history", shortTokens(c.History)+" of "+shortTokens(c.Budget)+" budget")
+		// How close history is to being masked or summarized, not how full
+		// the window is.
+		fmt.Fprintf(b, "%-11s %s %s\n", "  budget", debugBar(c.History, c.Budget, debugBarWidth), dim(fmt.Sprintf("%.0f%%", float64(c.History)/float64(max(1, c.Budget))*100)))
 		row("mask at", shortTokens(c.MaskTrigger()))
 		row("summarize", "at "+shortTokens(c.SummarizeTrigger()))
 	}

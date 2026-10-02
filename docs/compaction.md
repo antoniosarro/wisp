@@ -349,6 +349,12 @@ once the window is known, since the summary is rendered for it.
   history budget; history used, with the mask and summarize triggers; the
   calibration ratio; masked outputs and file bodies; the compaction count;
   and whether a pre-summary is generating or ready.
+- **Context used** is one number wherever it appears (the status line's
+  `ctx`, `/debug`'s "used", `/context`'s total): the fixed cost plus
+  history, as the next request would send it, against the window. It is
+  refreshed after every request and when a turn ends, so it includes the
+  last reply. `/debug`'s budget bar is a different measure: history against
+  its budget, which is how close masking and summarizing are.
 
 ## Design choices
 

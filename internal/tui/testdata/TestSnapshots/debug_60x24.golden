@@ -13,12 +13,12 @@
 │                                  │                        
 │ Context                          │                        
 │ window      32.8K                │                        
+│ used        12.0K (37%)          │                        
 │   fixed     2.6K                 │                        
-│   history   26.1K budget         │                        
-│ used        █████░░░░░░░░░ 36%   │                        
-│ mask at     15.6K                │        -  wisp is idle 
-│ summarize   at 22.2K             │                        
+│   history   9.4K of 26.1K budget │                        
+│   budget    █████░░░░░░░░░ 36%   │        -  wisp is idle 
+│ mask at     15.6K                │                        
 ╭──────────────────────────────────────────────────────────╮
 │ > ask wisp...                                            │
 ╰──────────────────────────────────────────────────────────╯
- fast-agent · /home/user/project · ctx 36% · $0.05          
+ fast-agent · /home/user/project · ctx 37% · $0.05          

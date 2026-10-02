@@ -129,7 +129,7 @@ func (u contextUsage) grid() string {
 // what compaction is doing.
 func (u contextUsage) legend() string {
 	c := u.stats
-	used := c.Fixed + c.History
+	used := c.Used()
 	var b strings.Builder
 	if u.model != "" {
 		b.WriteString(styleToolText.Render(sanitize(u.model))) // from the endpoint
@@ -142,7 +142,7 @@ func (u contextUsage) legend() string {
 		return fmt.Sprintf(" (%.1f%%)", float64(n)*100/float64(c.Window))
 	}
 	if c.Window > 0 {
-		fmt.Fprintf(&b, "%s / %s tokens%s\n\n", shortTokens(used), shortTokens(c.Window), pct(used))
+		fmt.Fprintf(&b, "%s / %s tokens (%.1f%%)\n\n", shortTokens(used), shortTokens(c.Window), c.UsedPct())
 	} else {
 		fmt.Fprintf(&b, "%s tokens · window unknown\n\n", shortTokens(used))
 	}

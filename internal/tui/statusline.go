@@ -27,8 +27,8 @@ func (m *Model) statusline() string {
 	if b := gitBranch(m.opts.WorkDir); b != "" {
 		parts = append(parts, "⎇ "+sanitize(b))
 	}
-	if w := m.opts.Model.ContextWindow; w > 0 && m.stats.PromptTokens > 0 {
-		parts = append(parts, fmt.Sprintf("ctx %d%%", 100*m.stats.PromptTokens/w))
+	if c := m.stats.Context; c.Window > 0 && c.History > 0 {
+		parts = append(parts, fmt.Sprintf("ctx %.0f%%", c.UsedPct()))
 	}
 	if c := m.costSummary(); c.Session+c.Agents > 0 {
 		parts = append(parts, fmt.Sprintf("$%.2f", c.Session+c.Agents))

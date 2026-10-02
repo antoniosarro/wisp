@@ -119,7 +119,7 @@ type Model struct {
 	suggestCancel context.CancelFunc
 
 	helpOpen bool
-	modal       *picker // a list to choose from, over the chat
+	modal    *picker // a list to choose from, over the chat
 
 	knownModels []model.Info  // the endpoint's models, as last listed
 	argCache    []pickerItem  // what the popup suggests as arguments, while open
@@ -427,6 +427,9 @@ func (m *Model) finishTurn(err error) {
 	}
 	m.pending = nil
 	m.stopNoting()
+	// The last step's snapshot predates its reply joining the history: the
+	// loop is idle now, so read it again, as /context does.
+	m.stats.Context = m.loop.ContextUsage()
 	m.blocks.settle(err)
 	m.syncViewport()
 }

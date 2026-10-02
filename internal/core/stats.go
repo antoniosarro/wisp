@@ -71,6 +71,18 @@ type ContextStats struct {
 	Reserve   int            `json:"reserve"`    // room kept for the reply; 0 when the window is unknown
 }
 
+// Used is what the next request sends: the fixed cost and history.
+func (c ContextStats) Used() int { return c.Fixed + c.History }
+
+// UsedPct is Used as a percentage of the window; 0 when it is unknown.
+// Every view of how full the context is shows this one number.
+func (c ContextStats) UsedPct() float64 {
+	if c.Window <= 0 {
+		return 0
+	}
+	return float64(c.Used()) * 100 / float64(c.Window)
+}
+
 // MaskTrigger and SummarizeTrigger are the history sizes, in tokens, past
 // which old tool output is masked, and history summarized, before the next
 // request.

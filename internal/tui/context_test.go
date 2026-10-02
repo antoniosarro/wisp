@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -65,6 +66,37 @@ func TestContextBetweenTurnsReadsTheLoop(t *testing.T) {
 	m.showContext()
 	if got := m.blocks[len(m.blocks)-1].usage.stats; got.Messages < 500 || got.Window != 16384 {
 		t.Errorf("snapshot = %+v, want the loop's current numbers", got)
+	}
+}
+
+// The status line, the debug panel and /context once each showed a
+// different number: the last request's reported prompt, history against
+// its budget, and the next request's size. After a turn all three show
+// the next request's size, the reply included.
+func TestContextUsedAgreesEverywhere(t *testing.T) {
+	p := &testutil.ScriptedProvider{Turns: [][]model.Event{{
+		{Kind: model.EventTextDelta, Text: strings.Repeat("a long answer ", 400)},
+		{Kind: model.EventDone, Usage: &model.Usage{PromptTokens: 50, CompletionTokens: 1600}},
+	}}}
+	m, ch := newTestModel(t, p)
+	m.loop.ContextWindow = 16384
+	typeText(m, "hi")
+	pump(t, m, ch)
+
+	want := m.loop.ContextUsage().UsedPct()
+	if want < 5 {
+		t.Fatalf("used = %.1f%%, want the answer counted", want)
+	}
+	pct := fmt.Sprintf("%.0f%%", want)
+	if got := stripANSI(m.statusline()); !strings.Contains(got, "ctx "+pct) {
+		t.Errorf("status line %q, want ctx %s", got, pct)
+	}
+	if got := stripANSI(renderDebugPanel(m.stats, m.opts, m.costSummary(), 0, 0, sidePanelWidth)); !strings.Contains(got, "("+pct+")") {
+		t.Errorf("debug panel lacks used (%s):\n%s", pct, got)
+	}
+	m.showContext()
+	if got := stripANSI(m.blocks[len(m.blocks)-1].usage.legend()); !strings.Contains(got, fmt.Sprintf("(%.1f%%)", want)) {
+		t.Errorf("/context lacks %.1f%%:\n%s", want, got)
 	}
 }
 

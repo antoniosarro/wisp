@@ -105,6 +105,13 @@ reserve = min(clamp(window/8, 4K, 16K), model max output)   room for the answer
 budget  = window − reserve − fixed                           what history may use
 ```
 
+Each turn's request asks for at most what is left of the window after the
+prompt, less 5% for the estimate's error, but never less than the reserve
+and never more than 32K or the model's max output. That `max_tokens`
+keeps a backend that counts prompt plus cap against the window (vLLM) from
+refusing the request, and OpenRouter from holding credit for the model's
+whole output limit, which a key with a lower spending limit can't cover.
+
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | mask trigger | history > 60% of budget | start tier 1 |

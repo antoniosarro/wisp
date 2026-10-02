@@ -340,7 +340,7 @@ func (l *Loop) stepFitting(ctx context.Context, toolChoice string) (string, []mo
 // is sent only with tools: "none" forbids calls, "" leaves it to the model.
 // The request is traced as a span of the turn (trace.go).
 func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model.ToolCall, truncated bool, err error) {
-	req := model.Request{Messages: l.Messages(), Tools: l.requestTools(), Effort: l.Effort}
+	req := model.Request{Messages: l.Messages(), Tools: l.requestTools(), Effort: l.Effort, MaxTokens: l.replyCap()}
 	if req.Tools != nil {
 		req.ToolChoice = toolChoice
 	}

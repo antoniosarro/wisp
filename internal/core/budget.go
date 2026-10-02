@@ -132,6 +132,29 @@ func (l *Loop) reserve() int {
 	return r
 }
 
+// maxReply caps a turn's reply. Without a cap a backend reads the request
+// as "as much as the model can write": OpenRouter then holds credit for the
+// model's whole output limit, and refuses a key whose limit is lower.
+const maxReply = 32768
+
+// replyCap is the output cap a turn's request asks for: the room the window
+// has left after the prompt, less a twentieth for the estimate's error, at
+// least the reserve History always leaves free, and at most maxReply and
+// what the model can write. A backend that counts prompt and cap against
+// the window (vLLM) so doesn't refuse it.
+func (l *Loop) replyCap() int {
+	limit := maxReply
+	if l.MaxOutput > 0 {
+		limit = min(limit, l.MaxOutput)
+	}
+	if l.ContextWindow > 0 {
+		prompt := l.projectedHistory() + int(float64(l.fixedTokens())*l.ratio())
+		room := l.ContextWindow - prompt - l.ContextWindow/20
+		limit = min(limit, max(room, l.reserve()))
+	}
+	return limit
+}
+
 // ratio is how many backend tokens one local estimate token is worth. The
 // local tokenizer is cl100k, which differs from most local models' by
 // 10–25%; reported prompt sizes correct it.

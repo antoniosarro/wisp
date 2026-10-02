@@ -156,6 +156,47 @@ func TestHistoryBudget(t *testing.T) {
 	}
 }
 
+// A turn always asks for a bounded reply that fits the window: OpenRouter
+// holds credit for the cap, and vLLM refuses prompt plus cap past it.
+func TestReplyCap(t *testing.T) {
+	l := &Loop{}
+	if got := l.replyCap(); got != maxReply {
+		t.Errorf("nothing known: cap = %d, want %d", got, maxReply)
+	}
+	l.MaxOutput = 8000
+	if got := l.replyCap(); got != 8000 {
+		t.Errorf("8000 max output: cap = %d, want 8000", got)
+	}
+	l = &Loop{ContextWindow: 1 << 20, MaxOutput: 943717}
+	if got := l.replyCap(); got != maxReply {
+		t.Errorf("1M window, 943K max output: cap = %d, want %d", got, maxReply)
+	}
+
+	big := strings.Repeat("some line of source code\n", 100) // ~600 tokens
+	for n := range 25 {
+		l := &Loop{ContextWindow: 16384, History: readHistory(n, big)}
+		prompt := l.projectedHistory() + l.fixedTokens()
+		got := l.replyCap()
+		if got < l.reserve() || got > maxReply {
+			t.Errorf("%d reads: cap = %d, want within the reserve %d and %d", n, got, l.reserve(), maxReply)
+		}
+		if got > l.reserve() && prompt+got > l.ContextWindow {
+			t.Errorf("%d reads: prompt %d + cap %d is past the window %d", n, prompt, got, l.ContextWindow)
+		}
+	}
+}
+
+func TestTurnRequestsSendTheReplyCap(t *testing.T) {
+	p := &budgetProvider{ratio: 1}
+	l := &Loop{Provider: p, ContextWindow: 1 << 20}
+	if _, err := l.Run(context.Background(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.reqs[0].MaxTokens; got != maxReply {
+		t.Errorf("max_tokens = %d, want %d", got, maxReply)
+	}
+}
+
 func TestProjectionUsesCalibratedRatio(t *testing.T) {
 	l := &Loop{History: readHistory(5, strings.Repeat("some line of source code\n", 100))}
 	local := l.historyTokens()

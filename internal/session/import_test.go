@@ -28,7 +28,8 @@ func TestImportScopesSessionsToDir(t *testing.T) {
 	}
 	defer func() { _ = s.Close() }()
 	s.Dir = "/elsewhere"
-	if _, err := s.CreateSession("m"); err != nil {
+	other, _ := s.CreateSession("m")
+	if err := s.AppendMessage(other, model.Message{Role: model.RoleUser, Content: "elsewhere"}); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 { // a rerun imports nothing twice

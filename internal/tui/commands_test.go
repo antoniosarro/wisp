@@ -34,10 +34,11 @@ func TestCommandPopup(t *testing.T) {
 	if !strings.Contains(got, "› /sessions") || !strings.Contains(got, "/resume [session]") || strings.Contains(got, "/model") {
 		t.Fatalf("popup for /s:\n%s", got)
 	}
-	if m.popupRows != 3 || m.viewport.Height != 30-2-3-3-1-1 { // /sessions, /resume, /agents; less the mascot's row and the statusline
+	if m.popupRows != 4 || m.viewport.Height != 30-2-4-3-1-1 { // /sessions, /session-rename, /resume, /agents; less the mascot's row and the statusline
 		t.Errorf("popup rows %d, viewport height %d: the chat box should give up the popup's rows", m.popupRows, m.viewport.Height)
 	}
 
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	if v := m.input.Value(); v != "/resume " {
@@ -174,9 +175,39 @@ func TestClearStartsANewSession(t *testing.T) {
 	if got := transcriptText(m); strings.Contains(got, "old work") || !strings.Contains(got, "New session") {
 		t.Errorf("transcript after /clear:\n%s", got)
 	}
-	sessions, _ := store.ListSessions()
-	if len(sessions) != 2 {
-		t.Errorf("%d sessions saved, want the old one kept and a new one", len(sessions))
+	if sessions, _ := store.ListSessions(); len(sessions) != 1 {
+		t.Errorf("%d sessions saved, want only the old one until the new one has a message", len(sessions))
+	}
+	if err := m.loop.Store.AppendMessage(m.loop.SessionID, model.Message{Role: model.RoleUser, Content: "new work"}); err != nil {
+		t.Fatal(err)
+	}
+	if sessions, _ := store.ListSessions(); len(sessions) != 2 {
+		t.Errorf("%d sessions saved, want the old one kept and the new one", len(sessions))
+	}
+}
+
+func TestSessionRename(t *testing.T) {
+	store, ids := sessionStoreWith(t, "old work")
+	m, _ := newTestModel(t, &testutil.ScriptedProvider{})
+	m.loop.Store = store
+	m.resumeSession(ids[0])
+	for input, want := range map[string]string{
+		`/session-rename "parser  rewrite"`: "parser rewrite",
+		`/session-rename it's fine`:         "it's fine",
+	} {
+		m.input.SetValue(input)
+		m.submit()
+		if title, _ := store.SessionTitle(ids[0]); title != want {
+			t.Errorf("%s: title %q, want %q", input, title, want)
+		}
+	}
+	if items := m.sessionItems(); len(items) != 1 || items[0].title != "it's fine" {
+		t.Errorf("picker items = %+v, want the title shown", items)
+	}
+	m.input.SetValue("/session-rename")
+	m.submit()
+	if title, _ := store.SessionTitle(ids[0]); title != "it's fine" || !strings.Contains(transcriptText(m), "Give the session a name") {
+		t.Errorf("an empty name changed the title to %q, or gave no usage", title)
 	}
 }
 

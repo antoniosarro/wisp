@@ -118,13 +118,40 @@ func (m *Model) clearSession() {
 	if store == nil {
 		return
 	}
+	saved := len(m.loop.History) > 0 // an empty session is never stored
 	id, err := store.CreateSession(m.opts.Model.ID)
 	if err != nil {
 		m.notify(err.Error())
 		return
 	}
 	m.switchSession(store, id, nil)
-	m.notify("New session. The previous one is saved: /resume lists it.")
+	if saved {
+		m.notify("New session. The previous one is saved: /resume lists it.")
+	} else {
+		m.notify("New session.")
+	}
+}
+
+// renameSession gives the current session the title arg, quotes around it
+// optional, which session lists show in place of its first prompt.
+func (m *Model) renameSession(arg string) {
+	if len(arg) >= 2 && (arg[0] == '"' || arg[0] == '\'') && arg[len(arg)-1] == arg[0] {
+		arg = arg[1 : len(arg)-1]
+	}
+	title := strings.Join(strings.Fields(arg), " ") // one line
+	if title == "" {
+		m.notify(`Give the session a name: /session-rename "parser rewrite".`)
+		return
+	}
+	store := m.sessionStore()
+	if store == nil {
+		return
+	}
+	if err := store.RenameSession(m.loop.SessionID, title); err != nil {
+		m.notify(err.Error())
+		return
+	}
+	m.notify(fmt.Sprintf("Session renamed to %q.", title))
 }
 
 // switchSession makes the loop run session id, with its history, and

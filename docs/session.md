@@ -24,9 +24,10 @@ is in `internal/session` and `internal/cli/sessions.go`.
 ```sql
 CREATE TABLE sessions (
     id         TEXT PRIMARY KEY,
-    created_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,          -- when its first message was stored
     model      TEXT NOT NULL,             -- the model it last used
-    dir        TEXT NOT NULL DEFAULT ''   -- working directory it belongs to
+    dir        TEXT NOT NULL DEFAULT '',  -- working directory it belongs to
+    title      TEXT NOT NULL DEFAULT ''   -- its name, from /session-rename
 );
 
 CREATE TABLE messages (
@@ -69,8 +70,16 @@ CREATE TABLE compactions (       -- see compaction.md
 
 - **Migrations.** Tables missing from an older database are created on
   open, and missing columns (`is_error`, `elided`, `precomputed`, `files`,
-  `dir`) are added. Older databases may also have a `sessions.title`
-  column; it is no longer used.
+  `dir`, `title`) are added. A `sessions.title` column from an older
+  version, which may hold NULL, is used as it is.
+- **A session is stored from its first message.** Starting wisp and
+  leaving saves nothing: the id exists from the start (the splash shows
+  it, and spans are recorded under it), but the `sessions` row is written
+  with the first message, and the spans of a session that never got one
+  are deleted when wisp exits.
+- **Titles.** `/session-rename NAME` names the current session; lists
+  (`--sessions`, `/resume`, the trace page) show the name in place of the
+  first prompt.
 - **Ids.** New sessions get a random 26-character id; older versions used
   UUIDs. Both work anywhere an id is asked for.
 - **Tool calls as JSON.** `messages.tool_calls` mirrors

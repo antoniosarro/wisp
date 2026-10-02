@@ -92,6 +92,8 @@ func (m *Model) runCommand(input string) (cmd tea.Cmd, ok bool) {
 		}
 	case "clear":
 		m.clearSession()
+	case "session-rename":
+		m.renameSession(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/session-rename")))
 	case "model":
 		if m.inTurn {
 			m.notify(msgBusySwitchModel)

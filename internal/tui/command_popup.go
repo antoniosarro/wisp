@@ -22,6 +22,7 @@ var commands = []command{
 	{"effort", "[level]", "set the reasoning effort (lists the model's levels without one)"},
 	{"resume", "[session]", "continue a saved session (lists them without one)"},
 	{"sessions", "", "list saved sessions to resume"},
+	{"session-rename", "name", "name this session in the session lists"},
 	{"debug", "", "show or hide the debug panel"},
 	{"todo", "", "show or hide the task panel"},
 	{"agents", "", "show or hide the sub-agent panel"},

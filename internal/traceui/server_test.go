@@ -30,6 +30,9 @@ func TestHandler(t *testing.T) {
 	}
 	store.Dir = "/elsewhere"
 	old, _ := store.CreateSession("spark-4b") // from before tracing: no spans
+	if err := store.AppendMessage(old, model.Message{Role: model.RoleUser, Content: "older"}); err != nil {
+		t.Fatal(err) // stored, so listed, from its first message
+	}
 	store.Dir = ""
 	for _, m := range []model.Message{
 		{Role: model.RoleUser, Content: "hi <b>there</b>"},

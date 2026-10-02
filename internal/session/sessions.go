@@ -2,6 +2,8 @@ package session
 
 import (
 	"crypto/rand"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -16,18 +18,22 @@ type Summary struct {
 	CreatedAt time.Time
 	Preview   string // start of the first user prompt
 	Dir       string // the directory it was started in
+	Title     string // the name given with RenameSession; "" for none
 }
 
-// OneLinePreview names the session in lists: the start of its first
-// prompt on one line.
+// OneLinePreview names the session in lists: its title, or the start of
+// its first prompt, on one line.
 func (s Summary) OneLinePreview() string {
+	if s.Title != "" {
+		return s.Title
+	}
 	return strings.ReplaceAll(s.Preview, "\n", " ")
 }
 
 // ListSessions returns the 100 most recent sessions of s.Dir, or of every
 // directory when it is "", newest first.
 func (s *Store) ListSessions() ([]Summary, error) {
-	rows, err := s.db.Query(`SELECT s.id,s.model,s.created_at,s.dir,COALESCE((SELECT substr(content,1,100) FROM messages WHERE session_id=s.id AND role='user' ORDER BY id LIMIT 1),'') FROM sessions s WHERE ?1='' OR s.dir=?1 ORDER BY s.created_at DESC,s.rowid DESC LIMIT 100`, s.Dir)
+	rows, err := s.db.Query(`SELECT s.id,s.model,s.created_at,s.dir,COALESCE(s.title,''),COALESCE((SELECT substr(content,1,100) FROM messages WHERE session_id=s.id AND role='user' ORDER BY id LIMIT 1),'') FROM sessions s WHERE ?1='' OR s.dir=?1 ORDER BY s.created_at DESC,s.rowid DESC LIMIT 100`, s.Dir)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +42,7 @@ func (s *Store) ListSessions() ([]Summary, error) {
 	for rows.Next() {
 		var s Summary
 		var created int64
-		if err := rows.Scan(&s.ID, &s.Model, &created, &s.Dir, &s.Preview); err != nil {
+		if err := rows.Scan(&s.ID, &s.Model, &created, &s.Dir, &s.Title, &s.Preview); err != nil {
 			return nil, err
 		}
 		s.CreatedAt = time.Unix(created, 0)
@@ -45,18 +51,73 @@ func (s *Store) ListSessions() ([]Summary, error) {
 	return result, rows.Err()
 }
 
-// CreateSession inserts a new session of s.Dir and returns its id, a
-// random string (older versions used UUIDs; both work as ids).
+// CreateSession starts a new session of s.Dir and returns its id, a random
+// string (older versions used UUIDs; both work as ids). The session is
+// stored, and listed, from its first message on (AppendMessage).
 func (s *Store) CreateSession(modelName string) (string, error) {
 	id := strings.ToLower(rand.Text())
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pending == nil {
+		s.pending = map[string]*pendingSession{}
+	}
+	s.pending[id] = &pendingSession{model: modelName, dir: s.Dir}
+	return id, nil
+}
+
+// materialize gives a pending session its row, created now.
+func (s *Store) materialize(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.pending[id]
+	if !ok {
+		return nil
+	}
 	_, err := s.db.Exec(
-		`INSERT INTO sessions (id, created_at, model, dir) VALUES (?, ?, ?, ?)`,
-		id, time.Now().Unix(), modelName, s.Dir,
+		`INSERT INTO sessions (id, created_at, model, dir, title) VALUES (?, ?, ?, ?, ?)`,
+		id, time.Now().Unix(), p.model, p.dir, p.title,
 	)
 	if err != nil {
-		return "", fmt.Errorf("creating session: %w", err)
+		return fmt.Errorf("creating session: %w", err)
 	}
-	return id, nil
+	delete(s.pending, id)
+	return nil
+}
+
+// RenameSession gives a session a title, which lists show in place of its
+// first prompt; "" removes it.
+func (s *Store) RenameSession(id, title string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p, ok := s.pending[id]; ok {
+		p.title = title
+		return nil
+	}
+	res, err := s.db.Exec(`UPDATE sessions SET title = ? WHERE id = ?`, title, id)
+	if err != nil {
+		return fmt.Errorf("renaming session %s: %w", id, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no such session: %s", id)
+	}
+	return nil
+}
+
+// SessionTitle returns a session's title, "" when it has none.
+func (s *Store) SessionTitle(id string) (string, error) {
+	s.mu.Lock()
+	p, ok := s.pending[id]
+	s.mu.Unlock()
+	if ok {
+		return p.title, nil
+	}
+	var title string
+	// COALESCE: older versions had a nullable title column of their own.
+	err := s.db.QueryRow(`SELECT COALESCE(title,'') FROM sessions WHERE id = ?`, id).Scan(&title)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return title, err
 }
 
 // SessionExists reports whether id refers to a known session.
@@ -71,6 +132,12 @@ func (s *Store) SessionExists(id string) (bool, error) {
 
 // SessionModel returns the model a session last used.
 func (s *Store) SessionModel(id string) (string, error) {
+	s.mu.Lock()
+	p, ok := s.pending[id]
+	s.mu.Unlock()
+	if ok {
+		return p.model, nil
+	}
 	var name string
 	if err := s.db.QueryRow(`SELECT model FROM sessions WHERE id = ?`, id).Scan(&name); err != nil {
 		return "", fmt.Errorf("reading session %s: %w", id, err)
@@ -81,6 +148,12 @@ func (s *Store) SessionModel(id string) (string, error) {
 // SetSessionModel records the model a session now uses, so resuming it
 // picks the same one.
 func (s *Store) SetSessionModel(id, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p, ok := s.pending[id]; ok {
+		p.model = name
+		return nil
+	}
 	if _, err := s.db.Exec(`UPDATE sessions SET model = ? WHERE id = ?`, name, id); err != nil {
 		return fmt.Errorf("updating session %s: %w", id, err)
 	}

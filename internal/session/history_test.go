@@ -107,12 +107,18 @@ func TestSessionExists(t *testing.T) {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
+	if exists, err := s.SessionExists(sid); err != nil || exists {
+		t.Errorf("SessionExists = %v, %v before the first message, want false", exists, err)
+	}
+	if err := s.AppendMessage(sid, model.Message{Role: model.RoleUser, Content: "hi"}); err != nil {
+		t.Fatal(err)
+	}
 	exists, err := s.SessionExists(sid)
 	if err != nil {
 		t.Fatalf("SessionExists: %v", err)
 	}
 	if !exists {
-		t.Error("SessionExists = false for a session that was just created")
+		t.Error("SessionExists = false for a session with a message")
 	}
 
 	exists, err = s.SessionExists("no-such-id")

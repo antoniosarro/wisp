@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+	"sync"
 
 	_ "modernc.org/sqlite"
 )
@@ -23,7 +24,7 @@ import (
 const schema = `
 CREATE TABLE IF NOT EXISTS sessions (
 	id         TEXT PRIMARY KEY,
-	created_at INTEGER NOT NULL,
+	created_at INTEGER NOT NULL, -- when its first message was stored
 	model      TEXT NOT NULL
 );
 
@@ -75,6 +76,7 @@ var columns = []struct{ table, name, ddl string }{
 	{"compactions", "precomputed", `ALTER TABLE compactions ADD COLUMN precomputed INTEGER NOT NULL DEFAULT 0`},
 	{"compactions", "files", `ALTER TABLE compactions ADD COLUMN files TEXT NOT NULL DEFAULT ''`},
 	{"sessions", "dir", `ALTER TABLE sessions ADD COLUMN dir TEXT NOT NULL DEFAULT ''`},
+	{"sessions", "title", `ALTER TABLE sessions ADD COLUMN title TEXT NOT NULL DEFAULT ''`},
 }
 
 // Store wraps a SQLite session database. Its methods are safe for
@@ -84,7 +86,17 @@ type Store struct {
 	// Dir is the project directory new sessions belong to and
 	// ListSessions shows; "" lists every session.
 	Dir string
+
+	mu sync.Mutex
+	// pending are sessions created but without a message yet: they get a
+	// row with their first message, so starting wisp and leaving leaves no
+	// empty session behind.
+	pending map[string]*pendingSession
 }
+
+// pendingSession is what a session's row will hold once it has one; dir
+// is Dir when it was created.
+type pendingSession struct{ model, title, dir string }
 
 // Open creates or opens the database at path and ensures the schema exists.
 // WAL and a busy timeout let several wisp processes share one database.
@@ -138,7 +150,14 @@ func migrate(db *sql.DB) error {
 	return nil
 }
 
-// Close closes the database.
+// Close closes the database, first deleting what sessions that never got a
+// message recorded, such as the spans of MCP servers starting.
 func (s *Store) Close() error {
+	s.mu.Lock()
+	for id := range s.pending {
+		_, _ = s.db.Exec(`DELETE FROM spans WHERE session_id = ?`, id)
+	}
+	s.pending = nil
+	s.mu.Unlock()
 	return s.db.Close()
 }

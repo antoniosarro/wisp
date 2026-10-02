@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
+	"github.com/antoniosarro/wisp/internal/span"
 )
 
 func TestOpenCreatesSchema(t *testing.T) {
@@ -187,10 +189,11 @@ func TestOpenMigratesOldDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = db.Exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, model TEXT NOT NULL);
+	// title as an older version made it: nullable, and NULL.
+	_, err = db.Exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, model TEXT NOT NULL, title TEXT);
 		CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, role TEXT NOT NULL,
 			content TEXT NOT NULL, tool_calls TEXT, tool_call_id TEXT, created_at INTEGER NOT NULL);
-		INSERT INTO sessions VALUES ('s', 0, 'm');
+		INSERT INTO sessions VALUES ('s', 0, 'm', NULL);
 		INSERT INTO messages (session_id, role, content, created_at) VALUES ('s', 'user', 'old', 0);`)
 	_ = db.Close()
 	if err != nil {
@@ -202,9 +205,14 @@ func TestOpenMigratesOldDatabase(t *testing.T) {
 			t.Fatal(err)
 		}
 		h, err := s.LoadHistory("s")
+		list, listErr := s.ListSessions()
+		title, titleErr := s.SessionTitle("s")
 		_ = s.Close()
 		if err != nil || len(h) != 1 || h[0].Content != "old" {
 			t.Fatalf("history = %+v, %v", h, err)
+		}
+		if listErr != nil || len(list) != 1 || list[0].OneLinePreview() != "old" || titleErr != nil || title != "" {
+			t.Fatalf("with a NULL title: sessions %+v, %v; title %q, %v", list, listErr, title, titleErr)
 		}
 	}
 }
@@ -238,6 +246,83 @@ func TestOpenMakesOldDatabasesPrivate(t *testing.T) {
 	}
 }
 
+// Starting wisp and leaving left an empty session in every list: a
+// session is stored from its first message, and what it recorded before
+// one (MCP servers' spans) goes when the store closes.
+func TestSessionStoredFromFirstMessage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Dir = "/p"
+	empty, _ := s.CreateSession("m")
+	used, _ := s.CreateSession("m")
+	for _, id := range []string{empty, used} {
+		if err := s.WriteSpan(span.Record{ID: "span-" + id, Session: id, Kind: "mcp.connect", Name: "srv", Start: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if list, _ := s.ListSessions(); len(list) != 0 {
+		t.Fatalf("sessions before any message = %+v, want none", list)
+	}
+	_ = s.SetSessionModel(used, "m2") // /model before the first prompt
+	if err := s.AppendMessage(used, model.Message{Role: model.RoleUser, Content: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := s.ListSessions(); len(list) != 1 || list[0].ID != used || list[0].Model != "m2" {
+		t.Fatalf("sessions = %+v, want only the one with a message, on m2", list)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	for id, want := range map[string]int{empty: 0, used: 1} {
+		if spans, _ := s.Spans(id); len(spans) != want {
+			t.Errorf("session %s has %d spans after closing, want %d", id, len(spans), want)
+		}
+	}
+}
+
+func TestRenameSession(t *testing.T) {
+	s := openTestStore(t)
+	early, _ := s.CreateSession("m")
+	if err := s.RenameSession(early, "named first"); err != nil { // before its first message
+		t.Fatal(err)
+	}
+	_ = s.AppendMessage(early, model.Message{Role: model.RoleUser, Content: "the prompt"})
+	later, _ := s.CreateSession("m")
+	_ = s.AppendMessage(later, model.Message{Role: model.RoleUser, Content: "another prompt"})
+	if err := s.RenameSession(later, "parser rewrite"); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]string{}
+	list, _ := s.ListSessions()
+	for _, sum := range list {
+		labels[sum.ID] = sum.OneLinePreview()
+	}
+	if labels[early] != "named first" || labels[later] != "parser rewrite" {
+		t.Errorf("list labels = %v, want the titles", labels)
+	}
+	if title, _ := s.SessionTitle(later); title != "parser rewrite" {
+		t.Errorf("SessionTitle = %q", title)
+	}
+	if err := s.RenameSession(later, ""); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := s.ListSessions(); list[0].OneLinePreview() != "another prompt" {
+		t.Errorf("after clearing the title, label = %q, want the prompt again", list[0].OneLinePreview())
+	}
+	if err := s.RenameSession("no-such-id", "x"); err == nil {
+		t.Error("renaming an unknown session succeeded")
+	}
+}
+
 func TestListSessionsByDirectory(t *testing.T) {
 	s, err := Open(filepath.Join(t.TempDir(), "s.db"))
 	if err != nil {
@@ -249,7 +334,10 @@ func TestListSessionsByDirectory(t *testing.T) {
 	_ = s.AppendMessage(first, model.Message{Role: model.RoleUser, Content: "fix the\nparser"})
 	second, _ := s.CreateSession("m2")
 	s.Dir = "/b"
-	_, _ = s.CreateSession("m")
+	third, _ := s.CreateSession("m")
+	// Stored from their first message, each in the directory it began in.
+	_ = s.AppendMessage(second, model.Message{Role: model.RoleUser, Content: "second"})
+	_ = s.AppendMessage(third, model.Message{Role: model.RoleUser, Content: "third"})
 
 	s.Dir = "/a"
 	list, err := s.ListSessions()

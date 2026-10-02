@@ -69,6 +69,7 @@ send Alt+Enter; Ctrl+J always works.
 | `/effort`, `/effort LEVEL` | Pick the model's reasoning effort, or set it; `default` leaves it to the model, `none` turns reasoning off |
 | `/sessions`, `/resume`, `/resume ID` | List this directory's sessions, or switch to one while idle |
 | `/clear` | Start a new session; the current one stays saved |
+| `/session-rename NAME` | Name the current session; lists show the name in place of its first prompt |
 | `/context` | What fills the context window, by category |
 | `/compact [focus]` | Summarize the conversation now, optionally saying what to keep |
 | `/debug` | Token usage, timing, cost, and the context budget |

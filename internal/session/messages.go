@@ -37,6 +37,9 @@ func encodeCalls(calls []model.ToolCall) (string, error) {
 // AppendMessage appends one message to a session's history. Images aren't
 // stored: a resumed session reads the file again if it needs one.
 func (s *Store) AppendMessage(sessionID string, msg model.Message) error {
+	if err := s.materialize(sessionID); err != nil {
+		return err
+	}
 	var toolCallsJSON any
 	if len(msg.ToolCalls) > 0 {
 		b, err := encodeCalls(msg.ToolCalls)

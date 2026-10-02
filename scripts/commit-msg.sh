@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 # Prints a Conventional Commits message for the staged changes, written by
 # a local model behind llama-swap (just commit uses it). Set COMMIT_MODEL
-# and COMMIT_MODEL_URL to use another model or endpoint.
+# and COMMIT_MODEL_URL to use another model or endpoint, or pass --remote
+# for OpenRouter (COMMIT_REMOTE_MODEL, default z-ai/glm-5.3-flash),
+# with the key in the file OPENROUTER_KEY_FILE (default: $WISP_QA_KEY_FILE,
+# else ~/.config/wisp/openrouter-key, asked for if missing).
 set -euo pipefail
 
 url=${COMMIT_MODEL_URL:-http://localhost:8091/v1}
 model=${COMMIT_MODEL:-coder-35b}
+key=
+if [[ ${1:-} == --remote ]]; then
+	url=https://openrouter.ai/api/v1 model=${COMMIT_REMOTE_MODEL:-z-ai/glm-5.3-flash}
+	source "$(dirname "$0")/secret.sh"
+	key=$(secret_file "commit-msg: --remote" OPENROUTER_KEY_FILE "${OPENROUTER_KEY_FILE:-${WISP_QA_KEY_FILE:-}}" \
+		"$secret_dir/openrouter-key" "OpenRouter key needed: create one at https://openrouter.ai/settings/keys; a credit limit keeps a mistake cheap.") || exit 1
+fi
 
 if git diff --cached --quiet; then
 	echo "commit-msg: nothing staged; git add what the commit should contain" >&2
@@ -47,8 +57,12 @@ request=$(jq -n --arg model "$model" --arg system "$system" --arg changes "$chan
 	messages: [{role: "system", content: $system}, {role: "user", content: $changes}]
 }')
 
+# The key header, if there is a key, from a file descriptor: not in curl's
+# arguments, which any user can list.
 reply=$(curl -sS --fail-with-body --max-time 300 "$url/chat/completions" \
-	-H 'Content-Type: application/json' -d "$request") || {
+	-H 'Content-Type: application/json' \
+	-H @<([[ -z $key ]] || printf 'Authorization: Bearer %s\n' "$key") \
+	-d "$request") || {
 	echo "commit-msg: $model at $url failed: $reply" >&2
 	exit 1
 }

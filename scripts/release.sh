@@ -6,13 +6,27 @@
 # release with the packages: what turns on the update notice.
 # Asks before every step; nothing leaves the machine without a yes.
 #
-# Usage: scripts/release.sh            (or: just release)
+# Usage: scripts/release.sh [--remote]   (or: just release [--remote])
 #   RELEASE_BASE_URL  OpenAI-compatible endpoint (default: local llama-swap)
 #   RELEASE_MODEL     model on it (default: coder-35b)
+#   --remote        use OpenRouter instead: a more capable model, which the
+#                   commits and the diff are sent to
+#   OPENROUTER_KEY_FILE  the file holding the OpenRouter key, for --remote
+#                   (default: $WISP_QA_KEY_FILE, as scripts/gifs.sh uses,
+#                   else ~/.config/wisp/openrouter-key, asked for if missing)
+#   RELEASE_REMOTE_MODEL  the model on OpenRouter (default: z-ai/glm-5.3-flash)
 set -euo pipefail
 
 BASE_URL="${RELEASE_BASE_URL:-http://localhost:8091/v1}"
 MODEL="${RELEASE_MODEL:-coder-35b}"
+key= cheapest=()
+if [[ ${1:-} == --remote ]]; then
+    BASE_URL=https://openrouter.ai/api/v1 MODEL=${RELEASE_REMOTE_MODEL:-z-ai/glm-5.3-flash}
+    cheapest=(--cheapest) # the model's two cheapest zero-retention providers
+    source "$(dirname "$0")/secret.sh"
+    key=$(secret_file "release: --remote" OPENROUTER_KEY_FILE "${OPENROUTER_KEY_FILE:-${WISP_QA_KEY_FILE:-}}" \
+        "$secret_dir/openrouter-key" "OpenRouter key needed: create one at https://openrouter.ai/settings/keys; a credit limit keeps a mistake cheap.") || exit 1
+fi
 
 cd "$(dirname "$0")/.."
 die() { echo "release: $*" >&2; exit 1; }
@@ -44,14 +58,15 @@ else
     changes="$(git log --no-show-signature --no-merges --format='- %s' -n 100)"
 fi
 
-# 3. Ask wisp for the bump and the notes. The key flag keeps any
-# WISP_API_KEY meant for a remote provider away from the local endpoint.
+# 3. Ask wisp for the bump and the notes. The key goes to wisp alone, which
+# keeps it from the commands it runs; empty for the local endpoint, so a
+# WISP_API_KEY meant for a remote provider stays away from it.
 go build -o bin/wisp ./cmd/wisp
 out=$(mktemp)
 notes=$(mktemp)
 trap 'rm -f "$out" "$notes"' EXIT
 echo "Asking $MODEL at $BASE_URL..."
-./bin/wisp --base-url "$BASE_URL" --model "$MODEL" --api-key "" "You are preparing a release of wisp, this repository.
+WISP_API_KEY=$key ./bin/wisp --base-url "$BASE_URL" --model "$MODEL" "${cheapest[@]}" "You are preparing a release of wisp, this repository.
 The last release is ${last:-none (this is the first)}. Below are the commits and changes since.
 Commit messages may be uninformative (\"wip\"): judge from the diff, and read files if needed.
 

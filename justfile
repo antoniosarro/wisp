@@ -49,17 +49,33 @@ screenshot *args:
 gifs *args:
     ./scripts/gifs.sh "$@"
 
-# tag a release: wisp on a local model suggests the version and notes (scripts/release.sh)
-release:
-    ./scripts/release.sh
+# tag a release: wisp on a local model (--remote: OpenRouter) suggests the version and notes (scripts/release.sh)
+[positional-arguments]
+release *args:
+    ./scripts/release.sh "$@"
 
-# write a Conventional Commits message for the staged changes with the local model (scripts/commit-msg.sh), then review it in git's editor
-commit:
-    @msg="$(scripts/commit-msg.sh)" && git commit --edit -m "$msg"
+# draft a GitHub issue with wisp on a local model (--remote: OpenRouter) from TEXT and evidence on stdin, or $EDITOR, then review and post it (scripts/issue.sh)
+[positional-arguments]
+issue *args:
+    ./scripts/issue.sh new "$@"
+
+# print a GitHub issue, its labels and its comments
+issue-get number:
+    ./scripts/issue.sh get {{number}}
+
+# create the issue labels the repository lacks (feature, nice-to-have, ...), after asking
+issue-labels:
+    ./scripts/issue.sh labels
+
+# write a Conventional Commits message for the staged changes with the local model (--remote: OpenRouter) (scripts/commit-msg.sh), then review it in git's editor
+[positional-arguments]
+commit *args:
+    @msg="$(scripts/commit-msg.sh "$@")" && git commit --edit -m "$msg"
 
 # only print the message the model would write for the staged changes
-commit-msg:
-    @scripts/commit-msg.sh
+[positional-arguments]
+commit-msg *args:
+    @scripts/commit-msg.sh "$@"
 
 # format Go source files in place with gofmt
 fmt:

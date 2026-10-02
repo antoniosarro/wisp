@@ -236,7 +236,12 @@ and TUI snapshots cover eighteen states at four terminal sizes.
 `just screenshot` records the real TUI in a private headless display, and
 `just gifs` re-creates every image in `docs/images` with it, on OpenRouter
 ([scripts/gifs.sh](scripts/gifs.sh)). Releases are tagged with
-`just release` ([packaging/README.md](packaging/README.md)).
+`just release` ([packaging/README.md](packaging/README.md)). `just issue`
+has wisp on a local model draft a GitHub issue from a description or a
+pasted error, for review before it is posted with `$GITHUB_TOKEN`, and
+`just issue-get N` prints one. `just issue-labels` adds the labels the
+drafts pick from, such as `feature` and `nice-to-have`
+([scripts/issue.sh](scripts/issue.sh)).
 
 ## License
 

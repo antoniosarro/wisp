@@ -29,6 +29,10 @@ type Options struct {
 	TraceURL string
 	// Update, when a newer release exists, is its version, shown on the splash.
 	Update string
+	// Notify is how to tell the user an approval waits or a turn ended
+	// while they look elsewhere: NotifyOff ("" too), NotifyBell, or
+	// NotifyDesktop.
+	Notify string
 	// OnModel, if set, configures loop for a newly described model and
 	// returns the details to show (with any overrides applied).
 	OnModel func(loop *core.Loop, info model.Info) model.Info
@@ -80,6 +84,11 @@ type Model struct {
 	// user has paused typing, for approvalGuard: a prompt that appears
 	// mid-sentence must not take the next letter as an answer.
 	pendingSince time.Time
+	// focused is whether the terminal reported having focus; false until
+	// it reports either way, so a terminal without focus reports notifies.
+	focused      bool
+	turnStarted  time.Time // when the running or last turn began
+	notification tea.Cmd   // to send with the update that set it (notifyUser)
 	lastKey      time.Time
 	noting       bool        // typing a note to send with a denial
 	noteDraft    string      // the draft set aside while noting
@@ -207,6 +216,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case tea.MouseMsg:
 		return m, m.handleMouse(msg)
+	case tea.FocusMsg:
+		m.focused = true
+		return m, nil
+	case tea.BlurMsg:
+		m.focused = false
+		return m, nil
 	case clipboardResultMsg:
 		if msg.err != nil { // kept in the chat: a border label is easy to miss
 			m.notify("Copy failed: " + msg.err.Error())
@@ -242,7 +257,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case TurnDoneMsg:
 		m.finishTurn(msg.Err)
-		cmds := []tea.Cmd{listenForMsg(m.msgs), m.input.Focus()}
+		cmds := []tea.Cmd{listenForMsg(m.msgs), m.input.Focus(), m.notifyTurnDone(msg)}
 		if msg.Err == nil && m.opts.Suggest && !msg.Compact {
 			cmds = append(cmds, m.requestSuggestion())
 		}
@@ -257,7 +272,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	}
 	if m.handleTurnMsg(msg) {
-		return m, tea.Batch(listenForMsg(m.msgs), m.frame())
+		note := m.notification
+		m.notification = nil
+		return m, tea.Batch(listenForMsg(m.msgs), m.frame(), note)
 	}
 	return m, m.updateInput(msg)
 }
@@ -291,6 +308,7 @@ func (m *Model) handleTurnMsg(msg tea.Msg) bool {
 		}
 		if len(m.pending) == 0 {
 			m.pendingSince = time.Now()
+			m.notification = m.notifyApproval(msg)
 		}
 		m.pending = append(m.pending, msg)
 		m.approval.GotoTop()
@@ -354,6 +372,7 @@ func (m *Model) submit() tea.Cmd {
 	m.input.SetValue("")
 	m.recordHistory(input)
 	m.inTurn = true
+	m.turnStarted = time.Now()
 	m.playEgg(input)
 	m.appendBlock(block{kind: blockUser, text: input})
 	m.applyLayout()

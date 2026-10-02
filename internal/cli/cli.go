@@ -10,12 +10,14 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/termsafe"
 	"github.com/antoniosarro/wisp/internal/tool/builtin"
+	"github.com/antoniosarro/wisp/internal/tui"
 	"github.com/antoniosarro/wisp/internal/version"
 )
 
@@ -69,6 +71,7 @@ func run() error {
 		return err
 	})
 	flag.StringVar(&cfg.SearchURL, "search-url", os.Getenv("WISP_SEARCH_URL"), "endpoint of the web_search tool: a SearXNG instance, e.g. http://localhost:8888, or "+builtin.BraveSearchURL+" with $WISP_SEARCH_KEY (default: $WISP_SEARCH_URL; without one there is no web_search)")
+	flag.StringVar(&cfg.Notify, "notify", cmp.Or(os.Getenv("WISP_NOTIFY"), tui.NotifyOff), "in the TUI, when an approval waits or a turn of 10 s or more ends while the terminal isn't focused: off, bell (the terminal bell), or desktop (notify-send on Linux, else the bell) (default: $WISP_NOTIFY, else off)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	listSessions := flag.Bool("sessions", false, "list recent sessions in this working directory and exit")
 	listModels := flag.Bool("models", false, "list the endpoint's models and what it reports about them, then exit")
@@ -89,6 +92,9 @@ func run() error {
 			return fmt.Errorf("$WISP_PRICE: %w", err)
 		}
 		cfg.Price = p
+	}
+	if !slices.Contains([]string{tui.NotifyOff, tui.NotifyBell, tui.NotifyDesktop}, cfg.Notify) {
+		return fmt.Errorf("--notify %q: want off, bell, or desktop", cfg.Notify)
 	}
 	cfg.SearchKey = os.Getenv("WISP_SEARCH_KEY")
 	if cfg.SearchURL == builtin.BraveSearchURL && cfg.SearchKey == "" {

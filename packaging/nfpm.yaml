@@ -33,3 +33,4 @@ contents:
 
 suggests:
   - git # the prompt names the current branch (the deb only: nfpm has no Arch optdepends)
+  - libnotify-bin # notify-send, for --notify desktop

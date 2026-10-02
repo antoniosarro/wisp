@@ -13,7 +13,8 @@ arch=('x86_64' 'aarch64')
 url='https://github.com/antoniosarro/wisp'
 license=('MIT')
 makedepends=('go>=2:1.26.7')   # go.mod's toolchain; Arch builds with GOTOOLCHAIN=local
-optdepends=('git: the prompt names the current branch')
+optdepends=('git: the prompt names the current branch'
+            'libnotify: desktop notifications with --notify desktop')
 source=("$pkgname-$pkgver.tar.gz")
 sha256sums=('SKIP')
 options=('!debug')

@@ -143,6 +143,32 @@ diff, or the new file's content:
   appears mid-sentence can't take a letter as an answer.
 - **Approval isn't a sandbox:** tools run with your account's access.
 
+## Notifications
+
+Look away during a long turn and wisp can call you back:
+
+```sh
+wisp --notify desktop   # or: export WISP_NOTIFY=desktop
+```
+
+- **When.** An approval starts waiting (a sub-agent's too), a turn of 10 s
+  or more ends, or a turn fails. Not after a short turn, when you are most
+  likely still watching, and not when you cancel one.
+- **Only when you look elsewhere.** wisp asks the terminal to report focus,
+  and stays quiet while it has it. A terminal that never reports focus
+  counts as unfocused, so it always notifies.
+- **How.** `desktop` shows a desktop notification through `notify-send`
+  (from libnotify; `libnotify-bin` on Debian and Ubuntu), with wisp's icon
+  (written to `~/.cache/wisp/notify-icon.png`), naming the project
+  directory, so several wisps can be told apart. The text is sent as plain
+  text. Without
+  `notify-send`, or on a system other than Linux, it rings the bell
+  instead. `bell` only rings the terminal bell, which most terminals turn
+  into a sound, a flash, or an urgency hint on the window. `off`, the
+  default, does neither.
+- **The TUI only.** One-shot mode never notifies: whatever runs it is
+  waiting on it already.
+
 ## One-shot mode
 
 ```sh

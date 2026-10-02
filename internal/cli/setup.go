@@ -51,6 +51,7 @@ type Config struct {
 	FetchAllow    []netip.Prefix // from --fetch-allow: non-public addresses fetch may reach
 	SearchURL     string         // from --search-url: the web_search endpoint; "" for no web_search
 	SearchKey     string         // $WISP_SEARCH_KEY: Brave Search's key
+	Notify        string         // from --notify: tui.NotifyOff, NotifyBell, or NotifyDesktop
 }
 
 // newProvider is the client for cfg's endpoint and model.

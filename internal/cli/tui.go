@@ -51,6 +51,7 @@ func runTUI(ctx context.Context, cfg Config, provider *openaicompat.Client, info
 		WorkDir:  wd,
 		Suggest:  cfg.Suggest,
 		TraceURL: cfg.TraceURL,
+		Notify:   cfg.Notify,
 		OnModel: func(loop *core.Loop, info model.Info) model.Info {
 			info = cfg.override(info)
 			applyModel(loop, vision, info)
@@ -67,7 +68,7 @@ func runTUI(ctx context.Context, cfg Config, provider *openaicompat.Client, info
 		}
 	}()
 	tui.UploadImages(os.Stdin, os.Stdout)
-	_, err = tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(tui.NewInput(os.Stdin)), tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
+	_, err = tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(tui.NewInput(os.Stdin)), tea.WithAltScreen(), tea.WithMouseAllMotion(), tea.WithReportFocus()).Run()
 	if err != nil {
 		// UploadImages entered the alternate screen already; a program that
 		// failed to start never left it. Leaving twice is harmless.

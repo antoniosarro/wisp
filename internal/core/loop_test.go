@@ -322,6 +322,41 @@ func (c countingTool) Run(_ context.Context, args json.RawMessage) (tool.Result,
 	return tool.Result{Content: c.name + " " + string(args)}, nil
 }
 
+// A result masked or compacted away is out of view, so its call runs again,
+// as the stub says to, instead of getting RepeatedCallContent.
+func TestOutOfViewCallsRunAgain(t *testing.T) {
+	for name, hide := range map[string]func(*Loop) error{
+		"masked": func(l *Loop) error {
+			l.mask(0, false, 0)
+			return nil
+		},
+		"compacted": func(l *Loop) error {
+			l.Provider = &replyProvider{replies: []string{"## Goal\n- read files"}}
+			return l.Compact(context.Background(), "")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var reads int
+			again := call("again", "read", `{"path":"f0.go"}`)
+			l := &Loop{
+				ContextWindow: 16384,
+				Tools:         tool.NewRegistry(countingTool{name: "read", runs: &reads}),
+				History:       turns(12),
+				ran:           map[string]bool{callKey(again): true}, // f0.go read earlier in the turn
+			}
+			if err := hide(l); err != nil {
+				t.Fatal(err)
+			}
+			if err := l.dispatchAndAppend(context.Background(), []model.ToolCall{again}); err != nil {
+				t.Fatal(err)
+			}
+			if reads != 1 {
+				t.Errorf("reading f0.go again after it was %s was refused as a repeat", name)
+			}
+		})
+	}
+}
+
 func TestRepeatedReadOnlyCallsDontRunAgain(t *testing.T) {
 	calls := func(cs ...model.ToolCall) []model.Event {
 		var events []model.Event

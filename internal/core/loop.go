@@ -447,7 +447,8 @@ func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model
 
 // dispatchAndAppend appends one tool-role message per call, in request order.
 // A read-only call identical to one already run in the turn, with no risky
-// call in between, would return the same thing: it gets RepeatedCallContent
+// call in between and its result still in view (not masked or compacted
+// away), would return the same thing: it gets RepeatedCallContent
 // instead of running, which stops small models calling the same tool in a
 // loop and keeps the repeated output out of context.
 func (l *Loop) dispatchAndAppend(ctx context.Context, toolCalls []model.ToolCall) error {

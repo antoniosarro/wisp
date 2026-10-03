@@ -170,6 +170,11 @@ func (l *Loop) Compact(ctx context.Context, focus string) error {
 		lg, from = prev.Ledger.clone(), prev.FirstKept
 	}
 	lg.Update(l.History[from:cut])
+	for _, msg := range l.History[from:cut] {
+		for _, call := range msg.ToolCalls {
+			delete(l.ran, callKey(call)) // its result is only summarized now: no repeat
+		}
+	}
 	c := &Compaction{FirstKept: cut, Summary: summary, Ledger: lg, TokensBefore: before, Precomputed: precomputed, Files: l.rehydrate(lg)}
 	c.text = c.render(l.userMessageTokens())
 	l.Compacted, l.tokens.counted = c, 0

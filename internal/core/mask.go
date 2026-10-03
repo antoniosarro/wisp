@@ -143,6 +143,7 @@ func (l *Loop) mask(target int, protect bool, minFree int) bool {
 			continue
 		}
 		msg.Elided = m.stub
+		delete(l.ran, callKey(calls[msg.ToolCallID])) // the stub says to call it again: no repeat
 		writeSpill(spillFrom(m.stub), msg.Content)
 		if elider != nil {
 			_ = elider.ElideMessage(l.SessionID, m.msg, msg.ToolCallID, m.stub)

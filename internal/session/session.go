@@ -98,6 +98,7 @@ var columns = []struct{ table, name, ddl string }{
 	{"compactions", "files", `ALTER TABLE compactions ADD COLUMN files TEXT NOT NULL DEFAULT ''`},
 	{"sessions", "dir", `ALTER TABLE sessions ADD COLUMN dir TEXT NOT NULL DEFAULT ''`},
 	{"sessions", "title", `ALTER TABLE sessions ADD COLUMN title TEXT NOT NULL DEFAULT ''`},
+	{"sessions", "starred", `ALTER TABLE sessions ADD COLUMN starred INTEGER NOT NULL DEFAULT 0`},
 }
 
 // Store wraps a SQLite session database. Its methods are safe for

@@ -38,6 +38,7 @@ func (m *Model) sessionItems() []pickerItem {
 			title:   s.OneLinePreview(),
 			detail:  s.CreatedAt.Format("2006-01-02 15:04") + " · " + s.Model + " · " + s.ID[:min(8, len(s.ID))],
 			current: s.ID == m.loop.SessionID,
+			starred: s.Starred,
 		}
 	}
 	return items
@@ -56,7 +57,62 @@ func (m *Model) pickSession() {
 	m.openPicker(&picker{title: "Resume a session", items: items, pick: func(id string) tea.Cmd {
 		m.resumeSession(id)
 		return nil
+	}, actions: []pickerAction{
+		{"ctrl+s", "star", m.starSession},
+		{"ctrl+r", "rename", m.askRenameSession},
+		{"ctrl+d", "delete", m.askDeleteSession},
 	}})
+}
+
+// starSession stars the chosen session, which then leads the list, or
+// unstars it.
+func (m *Model) starSession(p *picker, it pickerItem) tea.Cmd {
+	if err := m.sessionStore().SetStarred(it.value, !it.starred); err != nil {
+		p.status = err.Error()
+	}
+	m.refreshSessions(p, it.value)
+	return nil
+}
+
+// askRenameSession asks for the chosen session's new name; an empty one
+// removes the name, so lists show its first prompt again.
+func (m *Model) askRenameSession(p *picker, it pickerItem) tea.Cmd {
+	p.ask = &pickerAsk{prompt: "Rename to", edit: true, text: it.title, done: func(text string) tea.Cmd {
+		title := strings.Join(strings.Fields(text), " ")
+		if err := m.sessionStore().RenameSession(it.value, title); err != nil {
+			p.status = err.Error()
+		}
+		m.refreshSessions(p, it.value)
+		return nil
+	}}
+	return nil
+}
+
+// askDeleteSession asks before deleting the chosen session, which can't
+// be the one in use.
+func (m *Model) askDeleteSession(p *picker, it pickerItem) tea.Cmd {
+	if it.current {
+		p.status = "That's the session you're in: /clear starts a new one, then it can be deleted"
+		return nil
+	}
+	p.ask = &pickerAsk{prompt: fmt.Sprintf("Delete %q? Its conversation can't be recovered.", it.title), done: func(string) tea.Cmd {
+		if err := m.sessionStore().DeleteSession(it.value); err != nil {
+			p.status = err.Error()
+			return nil
+		}
+		m.refreshSessions(p, "")
+		p.status = "Session deleted"
+		return nil
+	}}
+	return nil
+}
+
+// refreshSessions lists the sessions again after an action, keeping value
+// chosen if it is still there.
+func (m *Model) refreshSessions(p *picker, value string) {
+	p.items = m.sessionItems()
+	p.index = min(p.index, max(0, len(p.visible())-1))
+	p.selectValue(value)
 }
 
 // findSession resolves a /sessions list number, a unique id prefix, or a

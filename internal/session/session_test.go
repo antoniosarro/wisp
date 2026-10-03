@@ -368,3 +368,44 @@ func TestResume(t *testing.T) {
 		t.Errorf("Resume = %+v, %v", h, err)
 	}
 }
+
+func TestStarAndDeleteSession(t *testing.T) {
+	s := openTestStore(t)
+	var ids []string
+	for _, p := range []string{"old", "new"} {
+		id, _ := s.CreateSession("m")
+		if err := s.AppendMessage(id, model.Message{Role: model.RoleUser, Content: p}); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	if err := s.SetStarred(ids[0], true); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := s.ListSessions()
+	if len(list) != 2 || list[0].ID != ids[0] || !list[0].Starred {
+		t.Fatalf("starred session not first: %+v", list)
+	}
+	if err := s.SaveFile(ids[0], 0, filepath.Join(t.TempDir(), "f")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteSession(ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	if exists, _ := s.SessionExists(ids[0]); exists {
+		t.Error("deleted session still exists")
+	}
+	for _, table := range []string{"messages", "checkpoints"} {
+		var n int
+		_ = s.db.QueryRow(`SELECT count(*) FROM `+table+` WHERE session_id = ?`, ids[0]).Scan(&n)
+		if n != 0 {
+			t.Errorf("%d %s rows left", n, table)
+		}
+	}
+	if h, _ := s.LoadHistory(ids[1]); len(h) != 1 {
+		t.Error("the other session lost its messages")
+	}
+	if err := s.SetStarred("nope", true); err == nil {
+		t.Error("starring an unknown session should fail")
+	}
+}

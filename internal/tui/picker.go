@@ -15,16 +15,44 @@ type pickerItem struct {
 	title   string
 	detail  string
 	current bool // the model or session in use
+	starred bool // marked with a star
 }
 
 // picker is a modal list over the chat: typing filters it, ↑/↓ choose,
-// Enter picks, Esc closes.
+// Enter picks, Esc closes. Actions add keys that act on the chosen item.
 type picker struct {
-	title  string
-	items  []pickerItem
-	filter string
-	index  int // into visible()
-	pick   func(value string) tea.Cmd
+	title   string
+	items   []pickerItem
+	filter  string
+	index   int // into visible()
+	pick    func(value string) tea.Cmd
+	actions []pickerAction
+	ask     *pickerAsk // a question an action is waiting on
+	status  string     // an action's outcome, shown until the next key
+}
+
+// pickerAction is a key acting on the chosen item.
+type pickerAction struct {
+	key, help string
+	run       func(p *picker, it pickerItem) tea.Cmd
+}
+
+// pickerAsk is a question an action asks before acting: a line to edit
+// (edit), or a yes/no confirmation.
+type pickerAsk struct {
+	prompt string
+	edit   bool
+	text   string
+	done   func(text string) tea.Cmd // on Enter, or y when confirming
+}
+
+// selectValue chooses the visible item with value, if any.
+func (p *picker) selectValue(value string) {
+	for i, it := range p.visible() {
+		if it.value == value {
+			p.index = i
+		}
+	}
 }
 
 // visible is the items matching the filter, in their order.
@@ -68,6 +96,15 @@ func (m *Model) handlePickerKey(msg tea.KeyMsg) tea.Cmd {
 			p.index = min(max(p.index+delta, 0), len(items)-1)
 		}
 	}
+	p.status = ""
+	if p.ask != nil {
+		return p.answer(msg)
+	}
+	for _, a := range p.actions {
+		if msg.String() == a.key && len(items) > 0 {
+			return a.run(p, items[p.index])
+		}
+	}
 	switch k := msg.String(); k {
 	case "esc", "ctrl+c":
 		m.modal = nil
@@ -103,6 +140,29 @@ func (m *Model) handlePickerKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
+// answer takes a key while p asks: an edit takes typing, Enter answers,
+// Esc cancels; a confirmation takes y or Enter, and any other key cancels.
+func (p *picker) answer(msg tea.KeyMsg) tea.Cmd {
+	ask := p.ask
+	k := msg.String()
+	switch {
+	case k == "enter" || !ask.edit && k == "y":
+		p.ask = nil
+		return ask.done(ask.text)
+	case !ask.edit || k == "esc" || k == "ctrl+c":
+		p.ask = nil
+	case k == "backspace":
+		if r := []rune(ask.text); len(r) > 0 {
+			ask.text = string(r[:len(r)-1])
+		}
+	case k == "ctrl+u":
+		ask.text = ""
+	case msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace:
+		ask.text += sanitize(string(msg.Runes))
+	}
+	return nil
+}
+
 // renderPicker draws the modal: title and count, the filter, the items
 // around the chosen one, and the keys.
 func (m *Model) renderPicker(width int) string {
@@ -116,10 +176,18 @@ func (m *Model) renderPicker(width int) string {
 	b.WriteString(strings.Repeat(" ", gap))
 	b.WriteString(styleDim.Render(count))
 	b.WriteString("\n")
-	if p.filter == "" {
+	switch {
+	case p.ask != nil && p.ask.edit:
+		b.WriteString(styleToolText.Render(p.ask.prompt) + " " + p.ask.text)
+		b.WriteString(styleSpinner.Render("▏"))
+		b.WriteString("\n\n")
+	case p.ask != nil:
+		b.WriteString(ansi.Truncate(styleToolError.Render(p.ask.prompt), inner, "…"))
+		b.WriteString("\n\n")
+	case p.filter == "":
 		b.WriteString(styleDim.Render("⌕ type to filter"))
 		b.WriteString("\n\n")
-	} else {
+	default:
 		b.WriteString("⌕ ")
 		b.WriteString(p.filter)
 		b.WriteString(styleSpinner.Render("▏"))
@@ -128,8 +196,9 @@ func (m *Model) renderPicker(width int) string {
 
 	rows := m.pickerRows()
 	first := min(max(0, p.index-rows/2), max(0, len(items)-rows))
-	titleWidth := 0
+	titleWidth, hasStars := 0, false
 	for _, it := range items {
+		hasStars = hasStars || it.starred
 		titleWidth = max(titleWidth, ansi.StringWidth(sanitize(it.title)))
 	}
 	titleWidth = min(titleWidth, inner*3/5)
@@ -141,6 +210,11 @@ func (m *Model) renderPicker(width int) string {
 		}
 		// Titles and details come from the endpoint and the session store.
 		title := ansi.Truncate(sanitize(it.title), titleWidth, "…")
+		if it.starred {
+			marker += styleSpinner.Render("★ ")
+		} else if hasStars {
+			marker += "  "
+		}
 		line := marker + style.Render(title) + strings.Repeat(" ", titleWidth-ansi.StringWidth(title)+2) + styleDim.Render(sanitize(it.detail))
 		if it.current {
 			line += " " + styleToolOK.Render("● current")
@@ -153,7 +227,20 @@ func (m *Model) renderPicker(width int) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(styleDim.Render("↑/↓ choose · enter select · esc close"))
+	keys := "↑/↓ choose · enter select"
+	for _, a := range p.actions {
+		keys += " · " + a.key + " " + a.help
+	}
+	keys += " · esc close"
+	switch {
+	case p.ask != nil && p.ask.edit:
+		keys = "enter save · esc cancel"
+	case p.ask != nil:
+		keys = "y confirm · any other key cancels"
+	case p.status != "":
+		keys = p.status
+	}
+	b.WriteString(styleDim.Render(ansi.Truncate(keys, inner, "…")))
 	return stylePermissionBox.Width(inner + 2).Render(b.String())
 }
 

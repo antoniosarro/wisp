@@ -1,6 +1,7 @@
 package session
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -8,8 +9,8 @@ import (
 	"github.com/antoniosarro/wisp/internal/model"
 )
 
-// Pastes are numbered per session, and expanding and collapsing their
-// labels round-trips.
+// Pastes are numbered per session; expanding and collapsing their labels
+// round-trips, and deleting the session removes its images.
 func TestPastesRoundTrip(t *testing.T) {
 	s := openTestStore(t)
 	id, _ := s.CreateSession("m")
@@ -40,5 +41,15 @@ func TestPastesRoundTrip(t *testing.T) {
 	}
 	if got := Collapse(sent, pastes); got != prompt {
 		t.Errorf("Collapse = %q, want %q", got, prompt)
+	}
+
+	if err := s.DeleteSession(id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(ip.Path); !os.IsNotExist(err) {
+		t.Errorf("image left after deleting the session: %v", err)
+	}
+	if pastes, _ := s.Pastes(id); len(pastes) != 0 {
+		t.Errorf("%d pastes left", len(pastes))
 	}
 }

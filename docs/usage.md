@@ -83,6 +83,12 @@ choices: type to filter, ↑/↓ to choose, Tab to complete, Enter to run.
 `/model` shows what the endpoint reports about each model: its context
 window, tools, vision, reasoning effort levels, and price.
 
+In the session list (`/sessions`, or `/resume` alone), Ctrl+S stars the
+chosen session, which keeps it at the top; Ctrl+R renames it (an empty name
+shows its first prompt again); Ctrl+D deletes it, with everything stored for
+it, after you confirm with `y`. The session in use can't be deleted: `/clear`
+first.
+
 On a narrow terminal, `/debug` replaces the transcript; `/debug` again
 returns to it. The smallest usable size is 20 × 8.
 

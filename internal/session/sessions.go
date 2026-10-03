@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ type Summary struct {
 	Preview   string // start of the first user prompt
 	Dir       string // the directory it was started in
 	Title     string // the name given with RenameSession; "" for none
+	Starred   bool   // listed first (SetStarred)
 }
 
 // OneLinePreview names the session in lists: its title, or the start of
@@ -31,9 +33,9 @@ func (s Summary) OneLinePreview() string {
 }
 
 // ListSessions returns the 100 most recent sessions of s.Dir, or of every
-// directory when it is "", newest first.
+// directory when it is "", starred ones first, then newest first.
 func (s *Store) ListSessions() ([]Summary, error) {
-	rows, err := s.db.Query(`SELECT s.id,s.model,s.created_at,s.dir,COALESCE(s.title,''),COALESCE((SELECT substr(content,1,100) FROM messages WHERE session_id=s.id AND role='user' ORDER BY id LIMIT 1),'') FROM sessions s WHERE ?1='' OR s.dir=?1 ORDER BY s.created_at DESC,s.rowid DESC LIMIT 100`, s.Dir)
+	rows, err := s.db.Query(`SELECT s.id,s.model,s.created_at,s.dir,COALESCE(s.title,''),s.starred,COALESCE((SELECT substr(content,1,100) FROM messages WHERE session_id=s.id AND role='user' ORDER BY id LIMIT 1),'') FROM sessions s WHERE ?1='' OR s.dir=?1 ORDER BY s.starred DESC,s.created_at DESC,s.rowid DESC LIMIT 100`, s.Dir)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +44,7 @@ func (s *Store) ListSessions() ([]Summary, error) {
 	for rows.Next() {
 		var s Summary
 		var created int64
-		if err := rows.Scan(&s.ID, &s.Model, &created, &s.Dir, &s.Title, &s.Preview); err != nil {
+		if err := rows.Scan(&s.ID, &s.Model, &created, &s.Dir, &s.Title, &s.Starred, &s.Preview); err != nil {
 			return nil, err
 		}
 		s.CreatedAt = time.Unix(created, 0)
@@ -101,6 +103,41 @@ func (s *Store) RenameSession(id, title string) error {
 		return fmt.Errorf("no such session: %s", id)
 	}
 	return nil
+}
+
+// SetStarred stars a session, which lists show first, or unstars it.
+func (s *Store) SetStarred(id string, starred bool) error {
+	res, err := s.db.Exec(`UPDATE sessions SET starred = ? WHERE id = ?`, starred, id)
+	if err != nil {
+		return fmt.Errorf("starring session %s: %w", id, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no such session: %s", id)
+	}
+	return nil
+}
+
+// DeleteSession deletes a session and everything stored with it: its
+// messages, summaries, spans, file checkpoints, and pastes.
+func (s *Store) DeleteSession(id string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }() // a no-op after Commit
+	for _, table := range []string{"messages", "compactions", "spans", "checkpoints", "pastes", "sessions"} {
+		col := "session_id"
+		if table == "sessions" {
+			col = "id"
+		}
+		if _, err := tx.Exec(`DELETE FROM `+table+` WHERE `+col+` = ?`, id); err != nil {
+			return fmt.Errorf("deleting session %s: %w", id, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return os.RemoveAll(s.pasteDir(id))
 }
 
 // SessionTitle returns a session's title, "" when it has none.

@@ -131,6 +131,9 @@ func TestModelRedescribedAfterFirstTurn(t *testing.T) {
 	if got := transcriptText(m); !strings.Contains(got, "Using model") || !strings.Contains(got, "32K context") {
 		t.Errorf("a refresh that learned the window wasn't announced:\n%s", transcriptText(m))
 	}
+	if got := transcriptText(m); strings.Index(got, "Using model") > strings.Index(got, "one") {
+		t.Errorf("the refresh's notice isn't above the turn it describes:\n%s", got)
+	}
 	// The second turn knows the window: no more asking.
 	typeText(m, "two")
 	for {

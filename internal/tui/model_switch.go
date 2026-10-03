@@ -169,5 +169,30 @@ func (m *Model) useModel(msg modelInfoMsg) {
 	if info.Tools == model.Unsupported {
 		text += "\n\nThe endpoint says this model cannot call tools, so wisp sends none: it can answer, but not read files or run commands."
 	}
-	m.notify(text)
+	if msg.quiet {
+		m.noteAboveTurn(text)
+	} else {
+		m.notify(text)
+	}
+}
+
+// noteAboveTurn adds a notice above the last turn's prompt: what a
+// refresh after it learned describes the model the turn ran on.
+func (m *Model) noteAboveTurn(text string) {
+	i := len(m.blocks) - 1
+	for i >= 0 && m.blocks[i].kind != blockUser {
+		i--
+	}
+	if i < 0 {
+		m.notify(text)
+		return
+	}
+	m.blocks = slices.Insert(m.blocks, i, block{kind: blockNotice, text: text})
+	for _, b := range []*int{&m.selectedBlock, &m.hoverBlock} {
+		if *b >= i {
+			*b++
+		}
+	}
+	m.sel = textSelection{} // its lines moved down
+	m.applyLayout()
 }

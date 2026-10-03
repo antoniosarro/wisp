@@ -12,13 +12,13 @@ import (
 )
 
 // halfFull is finished turns filling about 60% of a 16K window's budget:
-// past the presummarize threshold, short of the summarize trigger.
+// past the presummarize threshold, short of the mask trigger.
 func halfFull(t *testing.T) *Loop {
 	t.Helper()
 	l := &Loop{ContextWindow: 16384, AutoCompact: true, Presummarize: true, History: turns(12)}
 	budget := l.historyBudget()
-	if p := l.projectedHistory(); p <= budget*presummarizePct/100 || p > budget*summarizePct/100 {
-		t.Fatalf("history %d not between %d%% and %d%% of budget %d", p, presummarizePct, summarizePct, budget)
+	if p := l.projectedHistory(); p <= budget*presummarizePct/100 || p > budget*maskTriggerPct/100 {
+		t.Fatalf("history %d not between %d%% and %d%% of budget %d", p, presummarizePct, maskTriggerPct, budget)
 	}
 	return l
 }

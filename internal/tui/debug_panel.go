@@ -210,7 +210,7 @@ func writeContext(b *strings.Builder, c core.ContextStats, dim func(any) string)
 		// the window is.
 		fmt.Fprintf(b, "%-11s %s %s\n", "  budget", debugBar(c.History, c.Budget, debugBarWidth), dim(fmt.Sprintf("%.0f%%", float64(c.History)/float64(max(1, c.Budget))*100)))
 		row("mask at", shortTokens(c.MaskTrigger()))
-		row("summarize", "at "+shortTokens(c.SummarizeTrigger()))
+		row("summarize", "if still over")
 	}
 	if c.Ratio != 0 && c.Ratio != 1 {
 		row("estimates", fmt.Sprintf("×%.2f", c.Ratio))

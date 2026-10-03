@@ -155,7 +155,7 @@ func (u contextUsage) legend() string {
 		free := max(0, c.Window-used-c.Reserve)
 		fmt.Fprintf(&b, "%s Free space: %s tokens%s\n", styleDim.Render("·"), shortTokens(free), styleDim.Render(pct(free)))
 		fmt.Fprintf(&b, "%s Reserved for the reply: %s tokens%s\n", styleDim.Render("×"), shortTokens(c.Reserve), styleDim.Render(pct(c.Reserve)))
-		fmt.Fprintf(&b, "\n%s\n", styleDim.Render(fmt.Sprintf("History masks at %s, summarizes at %s", shortTokens(c.MaskTrigger()), shortTokens(c.SummarizeTrigger()))))
+		fmt.Fprintf(&b, "\n%s\n", styleDim.Render(fmt.Sprintf("History masks past %s, summarizes if still over", shortTokens(c.MaskTrigger()))))
 	}
 	var notes []string
 	if n := c.MaskedResults + c.MaskedCalls; n > 0 {

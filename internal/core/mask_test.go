@@ -121,6 +121,20 @@ func TestMaskProtectsRecentSteps(t *testing.T) {
 	if n := masked(16384); n <= 3 {
 		t.Errorf("small window: %d results masked, want more than 3: recent steps may use only %d%% of the budget", n, protectedPct)
 	}
+
+	// Outputs so big the share covers less than one step: the last
+	// minProtectedSteps steps, the answer and two reads, keep theirs anyway.
+	var big [][]model.Message
+	for i := range 6 {
+		big = append(big, step(call(fmt.Sprint("r", i), "read", fmt.Sprintf(`{"path":"f%d.go"}`, i)), strings.Repeat(bigOutput, 4)))
+	}
+	l := &Loop{ContextWindow: 8192, History: history(big...)}
+	l.mask(0, true, 0)
+	for _, m := range l.History {
+		if m.Role == model.RoleTool && (m.Elided == "") != (m.ToolCallID == "r4" || m.ToolCallID == "r5") {
+			t.Errorf("big outputs: %s masked = %v, want r0-r3 masked and r4, r5 kept", m.ToolCallID, m.Elided != "")
+		}
+	}
 }
 
 func TestMaskSkipsSmallBatch(t *testing.T) {

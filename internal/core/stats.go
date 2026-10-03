@@ -83,11 +83,10 @@ func (c ContextStats) UsedPct() float64 {
 	return float64(c.Used()) * 100 / float64(c.Window)
 }
 
-// MaskTrigger and SummarizeTrigger are the history sizes, in tokens, past
-// which old tool output is masked, and history summarized, before the next
-// request.
-func (c ContextStats) MaskTrigger() int      { return c.Budget * maskTriggerPct / 100 }
-func (c ContextStats) SummarizeTrigger() int { return c.Budget * summarizePct / 100 }
+// MaskTrigger is the history size, in tokens, past which old tool output
+// is masked before the next request, and history summarized when masking
+// can't bring it back under.
+func (c ContextStats) MaskTrigger() int { return c.Budget * maskTriggerPct / 100 }
 
 // CacheHitRate is the share of prompt tokens served from cache, as a
 // percentage; ok is false when nothing was reported.

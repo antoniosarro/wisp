@@ -557,7 +557,7 @@ function renderContext() {
     legend = el("div", { class: "legend" }, cats.map(([k, label]) => item("k-" + k, label, parts[k], pparts && parts[k] - pparts[k])),
       win ? [item("free", "Free space", free, pc?.window && free - freeOf(pc)), item("reserve", "Reserved for the reply", c.reserve)] : null);
     const n = [];
-    if (win) n.push("masks history at " + fmtNum(c.fixed + c.mask_at) + ", summarizes at " + fmtNum(c.fixed + c.summarize_at));
+    if (win) n.push("masks history at " + fmtNum(c.fixed + c.mask_at) + (c.summarize_at ? ", summarizes at " + fmtNum(c.fixed + c.summarize_at) : ", summarizes if still over")); // summarize_at: traces before it was the mask trigger
     if (masked(c)) n.push(masked(c) + " masked, saving ~" + fmtNum(c.masked_saved) + (masked(c) > masked(pc) && pc ? " (" + signed(masked(c) - masked(pc)) + " here)" : ""));
     if (c.compactions) n.push(c.compactions + (c.compactions > 1 ? " compactions" : " compaction"));
     if (sent != null) n.push(fmtNum(sent) + " sent by the server's count");
@@ -629,7 +629,7 @@ function drawChart(host, reqs, at, agent) {
   };
   if (last && win) {
     rule(win, "window", false);
-    rule(last.fixed + last.summarize_at, "summarize", true);
+    if (last.summarize_at) rule(last.fixed + last.summarize_at, "summarize", true);
     rule(last.fixed + last.mask_at, "mask", true);
   }
   const base = y(0);

@@ -237,16 +237,21 @@ func (l *Loop) clearAtLeast() int {
 
 // Fit prepares History for the next request as a step does: past the mask
 // trigger, it masks old tool output down to the target, in one batch worth
-// the prefix cache it discards, and, with AutoCompact, summarizes past the
-// summarize trigger. Evals use it to build the context a request would
-// send without sending one. It fails only when ctx ends.
+// the prefix cache it discards, and, with AutoCompact, summarizes when that
+// leaves history still past the trigger. Evals use it to build the context
+// a request would send without sending one. It fails only when ctx ends.
 func (l *Loop) Fit(ctx context.Context) error {
 	budget := l.historyBudget()
-	if budget == 0 || l.projectedHistory() <= budget*maskTriggerPct/100 {
+	trigger := budget * maskTriggerPct / 100
+	if budget == 0 || l.projectedHistory() <= trigger {
 		return nil
 	}
 	l.mask(budget*maskTargetPct/100, true, l.clearAtLeast())
-	if l.AutoCompact && l.projectedHistory() > budget*summarizePct/100 {
+	// What masking left is the protected recent output and the stand-ins
+	// of earlier masking: only a summary shrinks those. Waiting for more
+	// room would leave the model a sliver of the window, rereading files
+	// as each new step pushes the last ones out.
+	if l.AutoCompact && l.projectedHistory() > trigger {
 		// Compact falls back to the ledger when the summary fails, so
 		// only ctx ending is an error here.
 		_ = l.Compact(ctx, "")

@@ -30,8 +30,12 @@ const (
 	// worth masking.
 	minArgBytes = 200
 
-	protectedSteps = 10 // recent steps whose output is never masked...
-	protectedPct   = 30 // ...unless they fill more than this share of the budget
+	// The last protectedSteps steps keep their output, as many as fit in
+	// protectedPct of the budget, and the last minProtectedSteps always do:
+	// masking what the model has just read only has it read it again.
+	protectedSteps    = 10
+	protectedPct      = 30
+	minProtectedSteps = 3
 )
 
 // Masking classes, masked in this order: output a later call made stale
@@ -69,8 +73,8 @@ type masking struct {
 // target of 0 masks everything it can). Output a later call superseded
 // goes first, then file bodies, then the rest, oldest first within each.
 // Results after the latest assistant message are never masked: the model
-// hasn't acted on them yet. With protect, neither are the last
-// protectedSteps steps, up to protectedPct of the budget. The batch is
+// hasn't acted on them yet. With protect, neither are the recent steps
+// maskableEnd protects. The batch is
 // applied only if it frees at least minFree tokens, so the backend's
 // prefix cache is thrown away only for a worthwhile gain. The stand-ins
 // are stored, when the store supports it, so a resumed session doesn't
@@ -171,7 +175,7 @@ func (l *Loop) maskableEnd(protect bool) int {
 	from, steps, used := last, 0, 0.0
 	for i := len(l.History) - 1; i >= 0; i-- {
 		used += float64(messageTokens(l.History[i])) * l.ratio()
-		if limit > 0 && used > limit {
+		if limit > 0 && used > limit && steps >= minProtectedSteps {
 			break
 		}
 		if l.History[i].Role == model.RoleAssistant {

@@ -168,7 +168,7 @@ func TestDebugPanelContextBudget(t *testing.T) {
 		MaskedResults: 3, MaskedCalls: 1, Compactions: 2, Presummary: "ready",
 	}}
 	out := stripANSI(renderDebugPanel(s, Options{Model: model.Info{ID: "test-model"}}, costSummary{}, 0, 0, sidePanelWidth))
-	for _, want := range []string{"window      16.4K", "used        8.2K (50%)", "fixed     2.0K", "history   6.2K of 10.0K budget", "62%", "mask at     6.0K", "summarize   at 8.5K", "×1.12", "masked      3 outputs", "bodies    1", "2×", "presummary  ready"} {
+	for _, want := range []string{"window      16.4K", "used        8.2K (50%)", "fixed     2.0K", "history   6.2K of 10.0K budget", "62%", "mask at     6.0K", "summarize   if still over", "×1.12", "masked      3 outputs", "bodies    1", "2×", "presummary  ready"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("debug panel lacks %q:\n%s", want, out)
 		}

@@ -18,7 +18,7 @@ flowchart TD
     project --> mask{"over 60%<br/>of the budget?"}
     mask -- no --> send([send])
     mask -- yes --> t1["Tier 1: mask old tool output<br/>down to 40% (no request)"]
-    t1 --> sum{"still over 85%?"}
+    t1 --> sum{"still over 60%?"}
     sum -- no --> send
     sum -- yes --> cand{"pre-summary<br/>ready?"}
     cand -- yes --> use["use it: instant"]
@@ -117,9 +117,9 @@ whole output limit, which a key with a lower spending limit can't cover.
 | mask trigger | history > 60% of budget | start tier 1 |
 | mask target | 40% of budget | tier 1 masks down to here in one batch |
 | clear at least | `max(2K, 10% of budget)` | tier 1 doesn't run for less; the cache break isn't worth it |
-| summarize trigger | history > 85% of budget after tier 1 has run | start tier 2 |
+| summarize trigger | history still > 60% of budget after tier 1 has run | start tier 2 |
 | least summarized | 2 × summary cap | tier 2 doesn't run when less than this precedes the cut |
-| protected window | last 10 steps, at most 30% of budget | tool results tier 1 leaves alone |
+| protected window | last 10 steps, at most 30% of budget, but always the last 3 | tool results tier 1 leaves alone |
 | kept tail | `min(20K, 25% of budget)` | messages kept verbatim by tier 2 |
 | summary cap | `clamp(8% of budget, 1K, 3K)` | `max_tokens` of the summary request |
 | pre-summarize | history > 50% of budget at turn end | start tier 2's request in the background |
@@ -219,8 +219,10 @@ pre-summarize between turns; its final report already summarizes its work.
 
 ## Tier 2: summarizing (one request, usually precomputed)
 
-Runs when tier 1 can't reach its target and the summarize trigger is hit,
-after a rejection that masking didn't fix, or on `/compact [focus]`.
+Runs when tier 1 can't bring history back under the mask trigger, after a
+rejection that masking didn't fix, or on `/compact [focus]`. Masking any
+further would hide what the model has just read, and it would read it
+again: in a 32K window that loop once filled a whole 45-minute run.
 
 ### Where to cut
 
@@ -346,7 +348,7 @@ once the window is known, since the summary is rendered for it.
 - **`/compact [focus]`** compacts on request, for example
   `/compact keep the API design details`.
 - **`/debug` and `/context`** show the budget: the window, fixed cost, and
-  history budget; history used, with the mask and summarize triggers; the
+  history budget; history used, with the mask trigger; the
   calibration ratio; masked outputs and file bodies; the compaction count;
   and whether a pre-summary is generating or ready.
 - **Context used** is one number wherever it appears (the status line's

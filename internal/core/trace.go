@@ -31,9 +31,8 @@ func (l *Loop) startRequestSpan(ctx context.Context, req model.Request) (context
 	c := l.contextStats()
 	sp.Set("wisp.context", struct {
 		ContextStats
-		MaskAt      int `json:"mask_at"`
-		SummarizeAt int `json:"summarize_at"`
-	}{c, c.MaskTrigger(), c.SummarizeTrigger()})
+		MaskAt int `json:"mask_at"`
+	}{c, c.MaskTrigger()})
 	toolNames := make([]string, len(req.Tools))
 	for i, t := range req.Tools {
 		toolNames[i] = t.Name

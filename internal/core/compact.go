@@ -16,8 +16,6 @@ import (
 // the ledger (ledger.go). History itself keeps every message.
 
 const (
-	summarizePct = 85 // summarize past this share of the budget
-
 	summaryHeader = "[wisp summary of the earlier conversation]"
 	// recordsNote tells the model the tagged sections are exact, since
 	// small models otherwise answer from the recent messages alone.

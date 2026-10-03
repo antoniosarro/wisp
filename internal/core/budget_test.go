@@ -263,8 +263,10 @@ func TestOverflowLearnsWindow(t *testing.T) {
 	if n := len(p.reqs); n != 2 {
 		t.Errorf("%d requests, want the rejected one and one retry", n)
 	}
-	if got, target := l.projectedHistory(), l.historyBudget()*maskTargetPct/100; got > target {
-		t.Errorf("history %d after the retry, want at most %d", got, target)
+	// Masked for the stated window, though not down to the target: the
+	// last minProtectedSteps reads alone fill most of it.
+	if got, trigger := l.projectedHistory(), l.historyBudget()*maskTriggerPct/100; got > trigger {
+		t.Errorf("history %d after the retry, want at most %d", got, trigger)
 	}
 }
 

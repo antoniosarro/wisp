@@ -171,6 +171,33 @@ func TestSummaryBeforeAssistantIsItsOwnMessage(t *testing.T) {
 	}
 }
 
+// The last reads alone pass the mask trigger, as with a small window: Fit
+// summarizes rather than mask what the model has just read, which would
+// only have it read it again.
+func TestFitSummarizesWhenMaskingFallsShort(t *testing.T) {
+	h := []model.Message{user("go")}
+	for i := range 9 {
+		out := bigOutput
+		if i >= 6 {
+			out = strings.Repeat(bigOutput, 6) // each under resultPct of the budget
+		}
+		c := call(fmt.Sprint("r", i), "read", fmt.Sprintf(`{"path":"f%d.go"}`, i))
+		h = append(h, calls(c), result(c.ID, out, false))
+	}
+	l := &Loop{Provider: &replyProvider{replies: []string{"## Goal\n- read files"}}, ContextWindow: 16384, AutoCompact: true, History: h}
+	if err := l.Fit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if l.Compacted == nil {
+		t.Error("masking couldn't get history under the trigger, and nothing was summarized")
+	}
+	for _, m := range l.History {
+		if m.Role == model.RoleTool && m.Elided != "" && m.ToolCallID >= "r6" {
+			t.Errorf("read %s, one of the last %d steps, was masked", m.ToolCallID, minProtectedSteps)
+		}
+	}
+}
+
 func TestAutoCompactBeforeStep(t *testing.T) {
 	// Big user messages: nothing masking can shrink.
 	var h []model.Message
@@ -179,8 +206,8 @@ func TestAutoCompactBeforeStep(t *testing.T) {
 	}
 	p := &replyProvider{replies: []string{"## Goal\n- x", "done"}}
 	l := &Loop{Provider: p, ContextWindow: 16384, AutoCompact: true, History: h}
-	if l.projectedHistory() <= l.historyBudget()*summarizePct/100 {
-		t.Fatalf("history %d not past the summarize trigger of budget %d", l.projectedHistory(), l.historyBudget())
+	if l.projectedHistory() <= l.historyBudget()*maskTriggerPct/100 {
+		t.Fatalf("history %d not past the mask trigger of budget %d", l.projectedHistory(), l.historyBudget())
 	}
 	answer, err := l.Run(context.Background(), "next")
 	if err != nil || answer != "done" {
@@ -189,7 +216,7 @@ func TestAutoCompactBeforeStep(t *testing.T) {
 	if l.Compacted == nil || len(p.reqs) != 2 || !strings.HasPrefix(p.reqs[1].Messages[0].Content, summaryHeader) {
 		t.Errorf("compacted %v, %d requests", l.Compacted != nil, len(p.reqs))
 	}
-	if l.projectedHistory() > l.historyBudget()*summarizePct/100 {
+	if l.projectedHistory() > l.historyBudget()*maskTriggerPct/100 {
 		t.Errorf("history %d still past the trigger after compacting", l.projectedHistory())
 	}
 }

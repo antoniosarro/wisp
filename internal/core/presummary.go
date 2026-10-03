@@ -91,8 +91,8 @@ func (l *Loop) usable(pre *presummary) bool {
 
 // yieldPresummary runs at the start of a turn. A background summary still
 // generating is cancelled, since on a single-slot server it would hold up
-// the turn's own requests, unless the turn will summarize at once anyway
-// and so waits for it. A finished one is kept for later.
+// the turn's own requests, unless the turn may summarize at once (past
+// the mask trigger, see Fit) and so waits for it. A finished one is kept for later.
 func (l *Loop) yieldPresummary(input string) {
 	pre := l.pre
 	if pre == nil {
@@ -104,7 +104,7 @@ func (l *Loop) yieldPresummary(input string) {
 	default:
 	}
 	budget := l.historyBudget()
-	needed := budget > 0 && l.projectedHistory()+int(float64(tokencount.Count(input))*l.ratio()) > budget*summarizePct/100
+	needed := budget > 0 && l.projectedHistory()+int(float64(tokencount.Count(input))*l.ratio()) > budget*maskTriggerPct/100
 	if !needed || !l.usable(pre) {
 		l.StopPresummary()
 	}

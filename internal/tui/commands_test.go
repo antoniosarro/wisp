@@ -191,14 +191,14 @@ func TestSessionRename(t *testing.T) {
 	m, _ := newTestModel(t, &testutil.ScriptedProvider{})
 	m.loop.Store = store
 	m.resumeSession(ids[0])
-	for input, want := range map[string]string{
-		`/session-rename "parser  rewrite"`: "parser rewrite",
-		`/session-rename it's fine`:         "it's fine",
+	for _, c := range []struct{ input, want string }{
+		{`/session-rename "parser  rewrite"`, "parser rewrite"},
+		{`/session-rename it's fine`, "it's fine"}, // last: the picker shows it
 	} {
-		m.input.SetValue(input)
+		m.input.SetValue(c.input)
 		m.submit()
-		if title, _ := store.SessionTitle(ids[0]); title != want {
-			t.Errorf("%s: title %q, want %q", input, title, want)
+		if title, _ := store.SessionTitle(ids[0]); title != c.want {
+			t.Errorf("%s: title %q, want %q", c.input, title, c.want)
 		}
 	}
 	if items := m.sessionItems(); len(items) != 1 || items[0].title != "it's fine" {

@@ -45,17 +45,25 @@ git diff --quiet || echo "release: note: unstaged changes are not part of the re
 last=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
 range="${last:+$last..}HEAD"
 [[ -z $last || -n $(git rev-list "$range") ]] || die "no commits since $last"
+# Each commit's subject, then its body indented under it: the bodies say
+# why, which the notes need and a cut-off diff may not show.
 # --no-show-signature: log.showSignature would add gpg's lines. No pipe
 # into head for git log: with pipefail, git killed by SIGPIPE fails the
-# script; the diff's cut-off is the exception, allowed to.
+# script; the cut-offs below are the exception, allowed to.
+# The prompt is one argument, which Linux caps at 128 KB: the commits get
+# 20 KB of it and the diff 80 KB.
+since=(-n 100) # before the first release: the latest commits
+[[ -z $last ]] || since=("$range")
+commits="$(git log --no-show-signature --no-merges --format='- %s%n%w(0,2,2)%b' "${since[@]}")"
+commits="$(printf '%s' "$commits" | head -c 20000 || true)"
 if [[ -n $last ]]; then
-    changes="$(git log --no-show-signature --no-merges --format='- %s' "$range")
+    changes="$commits
 
 $(git diff --stat "$last" HEAD | tail -40)
 
 $(git diff "$last" HEAD -- . ':!*.png' ':!*.gif' ':!go.sum' | head -c 80000 || true)"
 else
-    changes="$(git log --no-show-signature --no-merges --format='- %s' -n 100)"
+    changes="$commits"
 fi
 
 # 3. Ask wisp for the bump and the notes. The key goes to wisp alone, which

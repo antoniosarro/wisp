@@ -3,6 +3,7 @@
 package tui
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"time"
@@ -21,18 +22,25 @@ const sequenceWait = 60 * time.Millisecond
 // reads. bubbletea v1 parses each read on its own and turns a split mouse
 // report into an Esc key plus typed text such as "[<35;12;5M". It stays an
 // *os.File, so bubbletea still sets raw mode and cancels reads.
-func NewInput(f *os.File) *Input { return &Input{f} }
+func NewInput(f *os.File) *Input { return &Input{File: f} }
 
 // Input is terminal input that holds back a read ending inside an escape
 // sequence until the rest arrives.
-type Input struct{ *os.File }
+type Input struct {
+	*os.File
+	held []byte // the start of a sequence a full read ended in
+}
 
 // Read reads from the terminal, completing an escape sequence split across
 // reads when the rest follows within sequenceWait.
 func (in *Input) Read(p []byte) (int, error) {
-	n, err := in.File.Read(p)
-	if err != nil || n == 0 {
-		return n, err
+	n := copy(p, in.held)
+	in.held = in.held[n:]
+	if n == 0 {
+		var err error
+		if n, err = in.File.Read(p); err != nil || n == 0 {
+			return n, err
+		}
 	}
 	buf := p[:n]
 	// Wait for the remainder of a sequence split across reads. If nothing
@@ -43,6 +51,15 @@ func (in *Input) Read(p []byte) (int, error) {
 		buf = p[:len(buf)+more]
 		if readErr != nil {
 			break
+		}
+	}
+	// A burst of mouse reports fills the buffer, and the last one is often
+	// cut off. bubbletea would read its ESC [ as Alt+[ and type the rest:
+	// hold the sequence back and return it with the next read instead.
+	if len(buf) == len(p) && incompleteSequence(buf) {
+		if i := bytes.LastIndexByte(buf, 0x1b); i > 0 {
+			in.held = append(in.held, buf[i:]...)
+			buf = buf[:i]
 		}
 	}
 	return len(buf), nil

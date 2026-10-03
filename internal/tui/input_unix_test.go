@@ -3,10 +3,14 @@
 package tui
 
 import (
+	"fmt"
+	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"golang.org/x/sys/unix"
 )
 
@@ -93,5 +97,42 @@ func TestInputWaitSurvivesInterruptedPoll(t *testing.T) {
 	}
 	if !interrupted {
 		t.Error("the fake poll was never called")
+	}
+}
+
+// keyRecorder is a model that keeps the keys bubbletea parsed.
+type keyRecorder struct{ keys *[]string }
+
+func (keyRecorder) Init() tea.Cmd { return nil }
+func (r keyRecorder) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if k, ok := msg.(tea.KeyMsg); ok {
+		*r.keys = append(*r.keys, k.String())
+	}
+	return r, nil
+}
+func (keyRecorder) View() string { return "" }
+
+// A burst of mouse motion fills bubbletea's 256-byte reads; one ending
+// inside a report must not reach the program as Alt+[ and typed text.
+func TestInputBurstOfMouseReportsParsesAsMouse(t *testing.T) {
+	in, w := pipeInput(t)
+	var burst strings.Builder
+	for i := range 200 {
+		fmt.Fprintf(&burst, "\x1b[<35;%d;%dM", 1+i%120, 1+i%40)
+	}
+	var keys []string
+	p := tea.NewProgram(keyRecorder{&keys}, tea.WithInput(in), tea.WithOutput(io.Discard), tea.WithoutRenderer(), tea.WithoutSignals())
+	done := make(chan error, 1)
+	go func() { _, err := p.Run(); done <- err }()
+	if _, err := w.WriteString(burst.String()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(4 * sequenceWait)
+	p.Quit()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) > 0 {
+		t.Errorf("mouse reports parsed as keys: %q", keys)
 	}
 }

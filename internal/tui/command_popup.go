@@ -18,6 +18,7 @@ var commands = []command{
 	{"context", "", "what fills the context window"},
 	{"compact", "[focus]", "summarize the conversation to free context"},
 	{"clear", "", "start a new session; this one stays saved"},
+	{"undo", "", "take back the last turn and the files it changed"},
 	{"model", "[name]", "switch model (lists them without a name)"},
 	{"effort", "[level]", "set the reasoning effort (lists the model's levels without one)"},
 	{"resume", "[session]", "continue a saved session (lists them without one)"},

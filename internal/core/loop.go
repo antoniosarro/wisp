@@ -137,6 +137,11 @@ func (l *Loop) Run(ctx context.Context, userInput string) (answer string, err er
 	l.restoreSpills()
 	turnStart := len(l.History)
 	l.ran = map[string]bool{}
+	if cp, ok := l.Store.(Checkpointer); ok {
+		// A sub-agent's loop has no store and keeps this, so its edits
+		// are undone with the turn that ran it.
+		ctx = tool.WithCheckpoint(ctx, func(path string) error { return cp.SaveFile(l.SessionID, turnStart, path) })
+	}
 	ctx, turn := l.Spans.Start(ctx, span.KindTurn, firstLine(userInput))
 	turn.Set("wisp.input", userInput)
 	turn.Set("wisp.message_index", turnStart)

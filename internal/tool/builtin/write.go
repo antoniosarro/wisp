@@ -47,6 +47,9 @@ func (WriteTool) Run(ctx context.Context, args json.RawMessage) (tool.Result, er
 		return tool.Result{}, fmt.Errorf("content is required (use an explicit empty string to empty a file)")
 	}
 
+	if err := tool.Checkpoint(ctx, a.Path); err != nil {
+		return tool.Result{}, fmt.Errorf("saving %s for undo: %w", a.Path, err)
+	}
 	if dir := filepath.Dir(a.Path); dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return tool.Result{}, fmt.Errorf("creating %s: %w", dir, err)

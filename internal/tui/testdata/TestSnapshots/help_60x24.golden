@@ -10,11 +10,11 @@
 │    │                    to free context             │    │
 │   █│   /clear           start a new session; this   │    │
 │   ▀│                    one stays saved             │    │
+│    │   /undo            take back the last turn and │    │
+│    │                    the files it changed        │    │
 │    │   /model [name]    switch model (lists them    │    │
-│    │                    without a name)             │    │
+│ ───│                    without a name)             │─   │
 │    │   /effort [level]  set the reasoning effort    │    │
-│ ───│                    (lists the model's levels   │─   │
-│    │                    without one)                │    │
 │    │                                                │    │
 │    │ ↑/↓ pgup/pgdown scroll · esc to close          │idle│
 ╰────╰────────────────────────────────────────────────╯────╯

@@ -6,14 +6,15 @@
 │   ██  ██│   /context              what fills the context window                                            │         │
 │   ████╭─│   /compact [focus]      summarize the conversation to free context                               │         │
 │   ████│ │   /clear                start a new session; this one stays saved                                │         │
-│   █▀█▀╰─│   /model [name]         switch model (lists them without a name)                                 │         │
-│        ▝│   /effort [level]       set the reasoning effort (lists the model's levels without one)          │         │
-│   █ ▄ █▐│   /resume [session]     continue a saved session (lists them without one)                        │         │
-│   ▀▄▀▄▀▐│   /sessions             list saved sessions to resume                                            │         │
+│   █▀█▀╰─│   /undo                 take back the last turn and the files it changed                         │         │
+│        ▝│   /model [name]         switch model (lists them without a name)                                 │         │
+│   █ ▄ █▐│   /effort [level]       set the reasoning effort (lists the model's levels without one)          │         │
+│   ▀▄▀▄▀▐│   /resume [session]     continue a saved session (lists them without one)                        │         │
+│         │   /sessions             list saved sessions to resume                                            │         │
 │         │   /session-rename name  name this session in the session lists                                   │         │
 │         │   /debug                show or hide the debug panel                                             │         │
-│         │   /todo                 show or hide the task panel                                              │         │
-│ ────────│   /agents               show or hide the sub-agent panel                                         │──────   │
+│ ────────│   /todo                 show or hide the task panel                                              │──────   │
+│         │   /agents               show or hide the sub-agent panel                                         │         │
 │         │   /back                 return to the main chat                                                  │         │
 │         │                                                                                                  │         │
 │         │ Input                                                                                            │         │
@@ -30,7 +31,6 @@
 │         │   pgup/pgdown           scroll                                                                   │         │
 │         │   ctrl+end              follow the latest output                                                 │         │
 │         │   alt+←/→               select a block                                                           │         │
-│         │   ctrl+o                expand or collapse the selected block, or open a sub-agent's chat from   │         │
 │         │                                                                                                  │         │
 │         │ ↑/↓ pgup/pgdown scroll · esc to close                                                            │p is idle│
 ╰─────────╰──────────────────────────────────────────────────────────────────────────────────────────────────╯─────────╯

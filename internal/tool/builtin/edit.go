@@ -162,6 +162,9 @@ func editFile(ctx context.Context, path string, edits []replacement) (tool.Resul
 	if err := ctx.Err(); err != nil {
 		return tool.Result{}, err
 	}
+	if err := tool.Checkpoint(ctx, path); err != nil {
+		return tool.Result{}, fmt.Errorf("saving %s for undo: %w", path, err)
+	}
 	// The file exists, so it keeps its mode; the perm argument is unused.
 	if err := writeFileAtomic(path, []byte(content), 0o644); err != nil {
 		return tool.Result{}, fmt.Errorf("writing %s: %w", path, err)

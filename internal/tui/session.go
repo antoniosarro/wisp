@@ -171,17 +171,55 @@ func (m *Model) switchSession(store *session.Store, id string, history []model.M
 	if err := m.loop.LoadCompaction(); err != nil {
 		m.notify(err.Error() + "; resuming without the summary")
 	}
+	m.stats, m.cost = core.StepStats{}, costSummary{}
+	m.rebuildTranscript()
+}
+
+// rebuildTranscript renders the chat again from the loop's history.
+func (m *Model) rebuildTranscript() {
 	m.clearSuggestion()
 	m.blocks = nil
 	m.inputHistory, m.historyIndex, m.draft = nil, 0, ""
-	m.stats, m.cost = core.StepStats{}, costSummary{}
 	m.todos, m.todoOpen = nil, false
 	m.agentRuns, m.agentsOpen = nil, false
 	m.runViews, m.viewing = map[int64]*blockList{}, 0
 	m.selectedBlock, m.hoverBlock = -1, -1
 	m.sel = textSelection{}
 	m.notice = ""
-	m.replayHistory(history)
+	m.replayHistory(m.loop.History)
 	m.autoScroll = true
 	m.applyLayout()
+}
+
+// undoTurn takes back the last turn and the files it changed, and puts its
+// prompt back in the input box to edit and send again.
+func (m *Model) undoTurn() {
+	if m.inTurn {
+		m.notify("Cancel or finish the current turn before undoing it.")
+		return
+	}
+	u, err := m.loop.Undo()
+	if err != nil {
+		if len(u.Files) > 0 {
+			err = fmt.Errorf("%w (restored %s first)", err, strings.Join(u.Files, ", "))
+		}
+		m.notify("Undo failed: " + err.Error())
+		return
+	}
+	m.rebuildTranscript()
+	m.input.SetValue(u.Input)
+	m.input.CursorEnd()
+	msg := "Undid the last turn"
+	switch len(u.Files) {
+	case 0:
+	case 1:
+		msg += " and restored " + u.Files[0]
+	default:
+		msg += fmt.Sprintf(" and restored %d files", len(u.Files))
+	}
+	msg += "."
+	if len(u.Untracked) > 0 {
+		msg += " Changes made by " + strings.Join(u.Untracked, ", ") + " can't be undone and stay as they are."
+	}
+	m.notify(msg)
 }

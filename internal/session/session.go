@@ -5,6 +5,8 @@
 //   - sessions.go: creating, listing, and resuming sessions
 //   - messages.go: a session's history, masked output included
 //   - compactions.go: its summaries, so a resume starts from the latest
+//   - checkpoints.go: files as they were before each turn changed them,
+//     and undoing a turn
 package session
 
 import (
@@ -66,6 +68,16 @@ CREATE TABLE IF NOT EXISTS compactions (
 );
 
 CREATE INDEX IF NOT EXISTS compactions_session ON compactions(session_id, id);
+
+CREATE TABLE IF NOT EXISTS checkpoints (
+	session_id TEXT NOT NULL,
+	turn       INTEGER NOT NULL, -- index of the turn's user message
+	path       TEXT NOT NULL,    -- absolute
+	existed    INTEGER NOT NULL, -- 0: the turn created the file
+	content    BLOB NOT NULL,
+	mode       INTEGER NOT NULL,
+	PRIMARY KEY (session_id, turn, path)
+);
 `
 
 // columns are added to databases created by older versions; SQLite has no

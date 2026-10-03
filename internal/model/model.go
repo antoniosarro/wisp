@@ -28,7 +28,7 @@ type Message struct {
 	ToolCalls  []ToolCall // set on assistant messages that requested tools
 	ToolCallID string     // set on tool-role messages, links back to the call
 	IsError    bool       // set on tool-role messages whose call failed
-	Images     []Image    `json:"-"` // set on tool-role messages whose tool returned images; not persisted
+	Images     []Image    `json:"-"` // on tool-role messages whose tool returned images, and user messages with pasted ones; not persisted
 
 	// Elided, when set, is sent instead of Content: a short stand-in for old
 	// tool output trimmed to save context. Content keeps the full text.

@@ -74,11 +74,11 @@ type UpdateMsg string
 // StatsMsg is one step's stats snapshot forwarded from core.Loop.
 type StatsMsg core.StepStats
 
-// RunTurn runs loop.Run in a goroutine, forwarding its callbacks and
+// RunTurn runs loop.Run, with images attached, in a goroutine, forwarding its callbacks and
 // completion through send as tea.Msgs. Callers must not start another turn
 // on the same loop before TurnDoneMsg arrives. The returned channel closes
 // when the goroutine exits.
-func RunTurn(ctx context.Context, loop *core.Loop, input string, send func(tea.Msg)) <-chan struct{} {
+func RunTurn(ctx context.Context, loop *core.Loop, input string, send func(tea.Msg), images ...model.Image) <-chan struct{} {
 	loop.OnEvent = func(e model.Event) {
 		send(StreamMsg(e))
 	}
@@ -96,7 +96,7 @@ func RunTurn(ctx context.Context, loop *core.Loop, input string, send func(tea.M
 	go func() {
 		defer close(done)
 		defer recoverTurn(send, false)
-		answer, err := loop.Run(ctx, input)
+		answer, err := loop.Run(ctx, input, images...)
 		send(TurnDoneMsg{Answer: answer, Err: err})
 	}()
 	return done

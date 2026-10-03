@@ -93,6 +93,21 @@ func TestImagesFollowToolResults(t *testing.T) {
 	}
 }
 
+// A user's pasted images go in the user's own message, after its text.
+func TestUserImagesStayInTheirMessage(t *testing.T) {
+	img := model.Image{MIME: "image/png", Data: []byte{1, 2, 3}}
+	req := toChatRequest("m", model.Request{Messages: []model.Message{
+		{Role: model.RoleUser, Content: "what is this? [Image #1]", Images: []model.Image{img}},
+	}})
+	if len(req.Messages) != 1 {
+		t.Fatalf("%d messages, want 1", len(req.Messages))
+	}
+	parts, ok := req.Messages[0].Content.([]contentPart)
+	if !ok || len(parts) != 2 || parts[0].Text != "what is this? [Image #1]" || parts[1].ImageURL == nil || parts[1].ImageURL.URL != "data:image/png;base64,AQID" {
+		t.Errorf("content = %+v, want the text and the data URL", req.Messages[0].Content)
+	}
+}
+
 func TestReasoningControls(t *testing.T) {
 	srv, got := chatServer(t)
 	httpClient := redirectClient(srv)

@@ -94,6 +94,13 @@ type chatToolFunc struct {
 // imagesNote introduces the images that follow a run of tool results.
 const imagesNote = "Images returned by the tool calls above:"
 
+// imagePart is img as a data URL.
+func imagePart(img model.Image) contentPart {
+	return contentPart{Type: "image_url", ImageURL: &imageURL{
+		URL: "data:" + img.MIME + ";base64," + base64.StdEncoding.EncodeToString(img.Data),
+	}}
+}
+
 // toChatRequest translates req to the wire format, for modelName.
 func toChatRequest(modelName string, req model.Request) chatRequest {
 	messages := make([]chatMessage, 0, len(req.Messages))
@@ -110,14 +117,20 @@ func toChatRequest(modelName string, req model.Request) chatRequest {
 	for _, m := range req.Messages {
 		if m.Role != model.RoleTool {
 			flush()
+			if len(m.Images) > 0 { // pasted by the user: they go with the text
+				parts := []contentPart{{Type: "text", Text: m.Content}}
+				for _, img := range m.Images {
+					parts = append(parts, imagePart(img))
+				}
+				messages = append(messages, chatMessage{Role: string(m.Role), Content: parts})
+				continue
+			}
 		}
 		for _, img := range m.Images {
 			if len(pending) == 0 {
 				pending = append(pending, contentPart{Type: "text", Text: imagesNote})
 			}
-			pending = append(pending, contentPart{Type: "image_url", ImageURL: &imageURL{
-				URL: "data:" + img.MIME + ";base64," + base64.StdEncoding.EncodeToString(img.Data),
-			}})
+			pending = append(pending, imagePart(img))
 		}
 		cm := chatMessage{Role: string(m.Role), Content: m.Content, ToolCallID: m.ToolCallID}
 		for _, tc := range m.ToolCalls {

@@ -16,6 +16,7 @@ import (
 	"github.com/antoniosarro/wisp/internal/core"
 	"github.com/antoniosarro/wisp/internal/model"
 	"github.com/antoniosarro/wisp/internal/permission"
+	"github.com/antoniosarro/wisp/internal/session"
 )
 
 // Options is the session info the UI shows and changes.
@@ -130,11 +131,12 @@ type Model struct {
 	helpOpen bool
 	modal    *picker // a list to choose from, over the chat
 
-	knownModels []model.Info  // the endpoint's models, as last listed
-	argCache    []pickerItem  // what the popup suggests as arguments, while open
-	argCacheFor string        // the command argCache holds arguments for
-	redescribed bool          // asked again after a turn loaded the model
-	laterModel  *modelInfoMsg // a description that came during a turn, applied after it
+	knownModels []model.Info    // the endpoint's models, as last listed
+	argCache    []pickerItem    // what the popup suggests as arguments, while open
+	argCacheFor string          // the command argCache holds arguments for
+	redescribed bool            // asked again after a turn loaded the model
+	laterModel  *modelInfoMsg   // a description that came during a turn, applied after it
+	pastes      []session.Paste // the session's, for their labels (paste.go)
 
 	cmdIndex     int    // the command chosen in the suggestion popup
 	cmdDismissed string // input for which Esc closed the popup
@@ -221,6 +223,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.BlurMsg:
 		m.focused = false
+		return m, nil
+	case clipboardMsg:
+		m.handleClipboard(msg)
 		return m, nil
 	case clipboardResultMsg:
 		if msg.err != nil { // kept in the chat: a border label is easy to miss
@@ -331,7 +336,14 @@ func (m *Model) updateInput(msg tea.Msg) tea.Cmd {
 	}
 	lines := m.input.LineCount()
 	var cmd tea.Cmd
-	m.input, cmd = m.input.Update(msg)
+	k, isKey := msg.(tea.KeyMsg)
+	switch {
+	case isKey && k.Paste:
+		m.insertPaste(string(k.Runes))
+	case isKey && m.deleteLabel(k): // the whole label went
+	default:
+		m.input, cmd = m.input.Update(msg)
+	}
 	if m.input.LineCount() != lines {
 		m.applyLayout()
 	}
@@ -369,6 +381,11 @@ func (m *Model) submit() tea.Cmd {
 		return nil
 	}
 
+	text, images, err := session.Expand(input, m.pastes)
+	if err != nil {
+		m.notify("Can't send: " + err.Error())
+		return nil
+	}
 	m.input.SetValue("")
 	m.recordHistory(input)
 	m.inTurn = true
@@ -379,7 +396,7 @@ func (m *Model) submit() tea.Cmd {
 
 	turnCtx, cancel := context.WithCancel(m.ctx)
 	m.turnCancel = cancel
-	m.turnDone = RunTurn(turnCtx, m.loop, input, m.send)
+	m.turnDone = RunTurn(turnCtx, m.loop, text, m.send, images...)
 	return nil
 }
 

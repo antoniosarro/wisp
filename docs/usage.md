@@ -40,6 +40,7 @@ ticks steps off as they're done; `/todo` shows or hides it.
 | --- | --- |
 | Enter | Send; while the model works, keep the draft |
 | Alt+Enter or Ctrl+J | New line |
+| Ctrl+V | Paste an image from the clipboard as `[Image #N]` (Wayland `wl-paste` or X11 `xclip`; needs a vision model), or else its text. A paste over 10 lines or 1000 characters shows as `[Pasted text #N +L lines]` and is sent in full. The chat shows the labels; the model gets the text, and the image with its path. Pastes are kept with the session (images in `pasted/<session>` next to the session database) and deleted with it |
 | Up / Down | Recall sent prompts (inside a multi-line draft, move first) |
 | Esc or Ctrl+C | Cancel the running turn |
 | Esc (idle) | Close help or a list, leave a sub-agent chat, clear the selection |

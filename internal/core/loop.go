@@ -28,6 +28,9 @@ const ReminderPrefix = "[wisp reminder] "
 // so user and assistant messages keep alternating.
 const InterruptedReply = "(no reply: the turn was interrupted)"
 
+// ImageDroppedNote follows a message whose images are no longer sent.
+const ImageDroppedNote = " [image no longer attached; read the file again to see it]"
+
 // InterruptedResult stands in for the result of a tool call that never
 // finished.
 const InterruptedResult = "interrupted before a result was received"
@@ -120,10 +123,12 @@ func (l *Loop) WithSession(store MessageStore, id string, history []model.Messag
 	return &next
 }
 
-// Run appends userInput as a user turn and drives the provider/tool loop
-// until a plain-text answer comes back. Past MaxIterations, it asks for a
-// summary of the work so far instead of dropping it (wrapUp).
-func (l *Loop) Run(ctx context.Context, userInput string) (answer string, err error) {
+// Run appends userInput, with images attached, as a user turn and drives
+// the provider/tool loop until a plain-text answer comes back. Past
+// MaxIterations, it asks for a summary of the work so far instead of
+// dropping it (wrapUp). Images are sent with this turn only, as a tool's
+// are (dropImages).
+func (l *Loop) Run(ctx context.Context, userInput string, images ...model.Image) (answer string, err error) {
 	l.yieldPresummary(userInput)
 	defer func() {
 		if err == nil {
@@ -149,7 +154,7 @@ func (l *Loop) Run(ctx context.Context, userInput string) (answer string, err er
 		turn.Set("wisp.messages", len(l.History)-turnStart)
 		turn.EndErr(ctx, err)
 	}()
-	if err := l.appendAndPersist(model.Message{Role: model.RoleUser, Content: userInput}); err != nil {
+	if err := l.appendAndPersist(model.Message{Role: model.RoleUser, Content: userInput, Images: images}); err != nil {
 		return "", err
 	}
 	reminded := false
@@ -288,7 +293,7 @@ func (l *Loop) dropImages() {
 	for i := range l.History {
 		if msg := &l.History[i]; len(msg.Images) > 0 {
 			msg.Images = nil
-			msg.Content += " [image no longer attached; read the file again to see it]"
+			msg.Content += ImageDroppedNote
 			l.tokens.counted = 0 // an earlier message changed: count again
 		}
 	}

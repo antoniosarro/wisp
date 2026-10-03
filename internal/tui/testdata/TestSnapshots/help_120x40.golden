@@ -20,6 +20,8 @@
 │         │ Input                                                                                            │         │
 │         │   enter                 send, or run a /command                                                  │         │
 │         │   alt+enter, ctrl+j     insert a newline                                                         │         │
+│         │   ctrl+v                paste an image from the clipboard, or its text; long pastes show as a    │         │
+│         │                         label                                                                    │         │
 │         │   ↑/↓, alt+↑/↓          recall sent prompts and commands; you can draft while a turn runs        │         │
 │         │   /                     list the commands, and after /model, /effort, or /resume their choices:  │         │
 │         │                         ↑/↓ choose, tab completes, enter runs, esc closes                        │         │
@@ -29,8 +31,6 @@
 │         │                                                                                                  │         │
 │         │ Transcript                                                                                       │         │
 │         │   pgup/pgdown           scroll                                                                   │         │
-│         │   ctrl+end              follow the latest output                                                 │         │
-│         │   alt+←/→               select a block                                                           │         │
 │         │                                                                                                  │         │
 │         │ ↑/↓ pgup/pgdown scroll · esc to close                                                            │p is idle│
 ╰─────────╰──────────────────────────────────────────────────────────────────────────────────────────────────╯─────────╯

@@ -7,6 +7,7 @@
 //   - compactions.go: its summaries, so a resume starts from the latest
 //   - checkpoints.go: files as they were before each turn changed them,
 //     and undoing a turn
+//   - pastes.go: the labels of long pastes and pasted images
 package session
 
 import (
@@ -78,6 +79,14 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 	mode       INTEGER NOT NULL,
 	PRIMARY KEY (session_id, turn, path)
 );
+
+CREATE TABLE IF NOT EXISTS pastes (
+	session_id TEXT NOT NULL,
+	label      TEXT NOT NULL,
+	text       TEXT NOT NULL, -- "" for an image
+	path       TEXT NOT NULL, -- the image's file; "" for text
+	PRIMARY KEY (session_id, label)
+);
 `
 
 // columns are added to databases created by older versions; SQLite has no
@@ -94,7 +103,8 @@ var columns = []struct{ table, name, ddl string }{
 // Store wraps a SQLite session database. Its methods are safe for
 // concurrent use, as database/sql is; set Dir before sharing it.
 type Store struct {
-	db *sql.DB
+	db   *sql.DB
+	path string // the database file; pasted images are kept beside it
 	// Dir is the project directory new sessions belong to and
 	// ListSessions shows; "" lists every session.
 	Dir string
@@ -141,7 +151,7 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	return &Store{db: db, path: path}, nil
 }
 
 // migrate adds the columns an older database lacks.
@@ -163,11 +173,14 @@ func migrate(db *sql.DB) error {
 }
 
 // Close closes the database, first deleting what sessions that never got a
-// message recorded, such as the spans of MCP servers starting.
+// message recorded, such as the spans of MCP servers starting, or a paste
+// never sent.
 func (s *Store) Close() error {
 	s.mu.Lock()
 	for id := range s.pending {
 		_, _ = s.db.Exec(`DELETE FROM spans WHERE session_id = ?`, id)
+		_, _ = s.db.Exec(`DELETE FROM pastes WHERE session_id = ?`, id)
+		_ = os.RemoveAll(s.pasteDir(id))
 	}
 	s.pending = nil
 	s.mu.Unlock()

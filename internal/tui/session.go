@@ -207,7 +207,7 @@ func (m *Model) undoTurn() {
 		return
 	}
 	m.rebuildTranscript()
-	m.input.SetValue(u.Input)
+	m.input.SetValue(m.shownPrompt(u.Input))
 	m.input.CursorEnd()
 	msg := "Undid the last turn"
 	switch len(u.Files) {

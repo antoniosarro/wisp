@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/antoniosarro/wisp/internal/permission"
+	"github.com/antoniosarro/wisp/internal/session"
 )
 
 const (
@@ -110,6 +111,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "ctrl+r":
 		m.toggleLastReasoning()
+	case "ctrl+v":
+		return m.pasteClipboard()
 	case "pgup", "pgdown", "ctrl+u", "ctrl+d":
 		return m.scroll(msg)
 	default:
@@ -325,7 +328,7 @@ func (m *Model) handleNoteKey(msg tea.KeyMsg) tea.Cmd {
 		m.applyLayout()
 		return nil
 	case "enter":
-		note := strings.TrimSpace(m.input.Value())
+		note, _, _ := session.Expand(strings.TrimSpace(m.input.Value()), m.pastes)
 		m.stopNoting()
 		m.decide(permission.Deny, note)
 		return nil

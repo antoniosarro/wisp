@@ -269,6 +269,7 @@ func (m *Model) appendBlock(b block) {
 // not the user's.
 func (m *Model) replayHistory(history []model.Message) {
 	marks := m.loop.Compactions
+	m.loadPastes()
 	for i, msg := range history {
 		for len(marks) > 0 && marks[0].FirstKept <= i {
 			m.blocks = append(m.blocks, compactionBlock(marks[0], marks[0].Text()))
@@ -279,8 +280,9 @@ func (m *Model) replayHistory(history []model.Message) {
 			if strings.HasPrefix(msg.Content, core.ReminderPrefix) {
 				continue
 			}
-			m.blocks = append(m.blocks, block{kind: blockUser, text: msg.Content})
-			m.recordHistory(msg.Content)
+			prompt := m.shownPrompt(msg.Content)
+			m.blocks = append(m.blocks, block{kind: blockUser, text: prompt})
+			m.recordHistory(prompt)
 		case model.RoleAssistant:
 			m.blocks.orphan() // a reused call ID must not match an older call
 			if msg.Content != "" && msg.Content != core.InterruptedReply {

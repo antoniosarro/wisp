@@ -254,7 +254,7 @@ func TestLoadConfig(t *testing.T) {
 	write(project, `{"mcpServers": {"a": {"command": "a-local", "args": ["--root", "$WISP_TEST_TOKEN"]}, "c": {"command": "c-server", "disabled": true}}}`)
 	t.Setenv("WISP_TEST_TOKEN", "secret")
 
-	got, err := LoadConfig(global, project, filepath.Join(dir, "missing.json"))
+	got, err := LoadConfig(nil, global, project, filepath.Join(dir, "missing.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestLoadConfig(t *testing.T) {
 	}
 
 	write(project, `{"mcpServers": {"d": {"command": "x", "url": "https://x"}}}`)
-	if _, err := LoadConfig(project); err == nil {
+	if _, err := LoadConfig(nil, project); err == nil {
 		t.Error("a server with both command and url should be rejected")
 	}
 }

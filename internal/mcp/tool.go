@@ -26,16 +26,21 @@ type Tool struct {
 }
 
 // Schema is the server's definition, named mcp__<server>__<tool>. It is
-// what tool_search returns; mcp_call alone is in the tool list.
+// what tool_search returns, or, for a direct server, what the tool list
+// carries.
 func (t *Tool) Schema() model.ToolSchema {
 	st := t.tool.Load()
 	params, _ := json.Marshal(st.InputSchema)
 	return model.ToolSchema{Name: t.name, Description: st.Description, Parameters: params}
 }
 
-// Risky unless the server declares the tool read-only. Annotations are the
-// server's word: only configure servers you trust.
+// Risky unless the server declares the tool read-only, or its config does
+// (ServerConfig.ReadOnly). Annotations are the server's word: only
+// configure servers you trust.
 func (t *Tool) Risky() bool {
+	if t.server.readOnly {
+		return false
+	}
 	a := t.tool.Load().Annotations
 	return a == nil || !a.ReadOnlyHint
 }

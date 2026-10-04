@@ -172,8 +172,9 @@ func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision 
 const mcpConnectTimeout = 20 * time.Second
 
 // connectMCP starts the servers in the global mcp.json and, when trusted,
-// the project's, and returns tool_search and mcp_call over their tools, or
-// no tools when no server is connected. Servers that fail to start are
+// the built-in ones for workDir (mcp.Builtin) and the project's, and
+// returns the direct servers' tools plus, when other servers are connected,
+// tool_search and mcp_call over theirs. Servers that fail to start are
 // reported and skipped. Destructive tools ask ask, even when prompter
 // allows everything.
 func connectMCP(workDir string, trusted bool, vision *atomic.Bool, prompter, ask permission.Prompter) (*mcp.Manager, []tool.Tool, error) {
@@ -181,10 +182,13 @@ func connectMCP(workDir string, trusted bool, vision *atomic.Bool, prompter, ask
 	if global := configPath("mcp.json"); global != "" {
 		paths = append(paths, global)
 	}
+	var builtin map[string]mcp.ServerConfig
 	if trusted {
+		// gopls runs the go command on the project, like its own config would.
+		builtin = mcp.Builtin(workDir)
 		paths = append(paths, projectPath(workDir, "mcp.json"))
 	}
-	configs, err := mcp.LoadConfig(paths...)
+	configs, err := mcp.LoadConfig(builtin, paths...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -200,7 +204,15 @@ func connectMCP(workDir string, trusted bool, vision *atomic.Bool, prompter, ask
 		return m, nil, nil
 	}
 	fmt.Fprintf(os.Stderr, "wisp: MCP: %s (%d tools) in %s\n", strings.Join(m.Servers(), ", "), len(m.Tools()), time.Since(start).Round(100*time.Millisecond))
-	return m, []tool.Tool{mcp.NewSearchTool(m), mcp.NewCallTool(m, mcp.Gate(prompter, ask))}, nil
+	gate := mcp.Gate(prompter, ask)
+	var tools []tool.Tool
+	for _, t := range m.DirectTools() {
+		tools = append(tools, gate(t))
+	}
+	if m.Deferred() {
+		tools = append(tools, mcp.NewSearchTool(m), mcp.NewCallTool(m, gate))
+	}
+	return m, tools, nil
 }
 
 // toolSupport is whether the main loop's model can call tools, for

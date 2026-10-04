@@ -48,6 +48,8 @@ type server struct {
 	session      *sdk.ClientSession
 	instructions string
 	tools        []*Tool // sorted by name
+	direct       bool    // its tools are in the tool list (ServerConfig.Direct)
+	readOnly     bool    // its tools never ask (ServerConfig.ReadOnly)
 }
 
 // Connect starts every configured server in parallel and lists its tools,
@@ -106,7 +108,7 @@ func (m *Manager) connect(ctx context.Context, name string, cfg ServerConfig, ti
 			HTTPClient: &http.Client{Transport: headerTransport{headers: cfg.Headers, host: endpoint.Host}},
 		}
 	}
-	s := &server{name: name}
+	s := &server{name: name, direct: cfg.Direct, readOnly: cfg.ReadOnly}
 	client := sdk.NewClient(&sdk.Implementation{Name: "wisp", Version: version.Version}, &sdk.ClientOptions{
 		// Not inline: the handler runs on the connection's reader.
 		ToolListChangedHandler: func(_ context.Context, req *sdk.ToolListChangedRequest) {
@@ -124,6 +126,9 @@ func (m *Manager) connect(ctx context.Context, name string, cfg ServerConfig, ti
 	s.session = session
 	if init := session.InitializeResult(); init != nil {
 		s.instructions = init.Instructions
+	}
+	if cfg.Instructions != nil {
+		s.instructions = *cfg.Instructions
 	}
 	if err := m.refresh(ctx, s, session); err != nil {
 		_ = session.Close()
@@ -198,6 +203,26 @@ func (m *Manager) Tools() []*Tool {
 		tools = append(tools, s.tools...)
 	}
 	return tools
+}
+
+// DirectTools returns the tools of the servers configured as direct, for
+// the tool list, which takes them once, at startup.
+func (m *Manager) DirectTools() []*Tool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var tools []*Tool
+	for _, s := range m.servers {
+		if s.direct {
+			tools = append(tools, s.tools...)
+		}
+	}
+	return tools
+}
+
+// Deferred reports whether a connected server's tools are reached through
+// tool_search and mcp_call.
+func (m *Manager) Deferred() bool {
+	return slices.ContainsFunc(m.servers, func(s *server) bool { return !s.direct })
 }
 
 // Servers lists the connected servers' names in index order.

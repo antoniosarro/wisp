@@ -37,17 +37,41 @@ type SearchTool struct {
 // NewSearchTool searches m's tools.
 func NewSearchTool(m *Manager) *SearchTool { return &SearchTool{m: m} }
 
-// Prompt is a system prompt section naming the connected servers: small
-// models overlook an index that lives only in a tool description.
+// Prompt is a system prompt section on the connected servers. It names
+// those behind tool_search, since small models overlook an index that
+// lives only in a tool description, and carries the instructions of the
+// direct ones, whose tools are in the tool list and not in the index.
 func Prompt(m *Manager) string {
-	return "# MCP servers\nConnected: " + strings.Join(m.Servers(), ", ") + ". " +
-		"Their tools are not in your tool list. When a task involves one of these services, " +
-		"call " + SearchToolName + " to get the tools' parameters (its description lists every tool), " +
-		"then call them through " + CallToolName + "."
+	var b strings.Builder
+	b.WriteString("# MCP servers")
+	var deferred []string
+	for _, s := range m.servers {
+		if !s.direct {
+			deferred = append(deferred, s.name)
+		}
+	}
+	if len(deferred) > 0 {
+		b.WriteString("\nConnected: " + strings.Join(deferred, ", ") + ". " +
+			"Their tools are not in your tool list. When a task involves one of these services, " +
+			"call " + SearchToolName + " to get the tools' parameters (its description lists every tool), " +
+			"then call them through " + CallToolName + ".")
+	}
+	for _, s := range m.servers {
+		if !s.direct {
+			continue
+		}
+		fmt.Fprintf(&b, "\n\n## %s\nIts tools are in your tool list, named %s<tool>.", s.name, toolName(s.name, ""))
+		if s.instructions != "" {
+			b.WriteString("\n")
+			b.WriteString(textfmt.CutRunes(strings.TrimSpace(s.instructions), maxIndexInstructions))
+		}
+	}
+	return b.String()
 }
 
 // Schema carries the index: every tool's name and the first line of its
-// description, under each server's instructions, capped.
+// description, under each server's instructions, capped. Direct servers'
+// tools are in the tool list instead.
 func (t *SearchTool) Schema() model.ToolSchema {
 	var b strings.Builder
 	b.WriteString("Returns the parameters of MCP tools, which you then call through " + CallToolName + ". " +
@@ -55,6 +79,9 @@ func (t *SearchTool) Schema() model.ToolSchema {
 		"Search only for what the task needs, and don't search again for a tool whose parameters you already have.\n\nAvailable tools:")
 	t.m.mu.RLock()
 	for _, s := range t.m.servers {
+		if s.direct {
+			continue
+		}
 		fmt.Fprintf(&b, "\n\n## %s", s.name)
 		if s.instructions != "" {
 			b.WriteString("\n")

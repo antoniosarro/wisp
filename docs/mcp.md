@@ -34,6 +34,16 @@ be copied across:
   carries its token along.
 - **Turning one off.** `"disabled": true` keeps an entry without starting
   it, e.g. to turn a global server off for one project.
+- **In the tool list.** `"direct": true` sends the server's tools with
+  the built-in ones instead of behind `tool_search` and `mcp_call`
+  ([below](#deferred-tool-definitions)): for a server whose few tools the
+  model uses all the time. They are listed once, at startup.
+- **Read-only.** `"readOnly": true` treats every tool of the server as
+  read-only, so none asks: for a trusted server that sends no annotations
+  ([Approvals](#approvals)).
+- **Instructions.** `"instructions": "..."` replaces what the server says
+  about itself at startup; `""` drops it. A direct server's instructions
+  go in the system prompt, the others' in `tool_search`'s index.
 - **Environment.** stdio servers run with wisp's environment minus
   `WISP_API_KEY`, plus their `env`.
 - **Project trust.** A project's `.wisp/mcp.json` is used only once the
@@ -52,7 +62,8 @@ tools are never called in a given session.
 ### Deferred tool definitions
 
 Only the built-in tools plus two MCP tools are sent: `tool_search` and
-`mcp_call`.
+`mcp_call`. The exception is a direct server ([Config](#config)), whose
+tools join the built-in ones at startup and stay out of the index.
 
 - **The index.** `tool_search`'s description carries it: every MCP tool's
   name (`mcp__<server>__<tool>`) and the first line of its description,
@@ -117,6 +128,29 @@ can `read` or `grep`.
 - **`resource_link`s** are sent as their URI, not fetched.
 - **Images** are sent as images when the model has vision.
 
+## Built-in: gopls
+
+In a Go module or workspace (a `go.mod` or `go.work` in the working
+directory or above), when `gopls` is on `PATH`, wisp starts gopls's own MCP
+server (`gopls mcp`, gopls v0.20 or later) without any config: symbol
+search, a file's dependencies within its package, a package's API,
+references, diagnostics, and renames as edits. It is a direct, read-only
+server with short instructions of wisp's:
+
+- **Direct**, since its 8 tools (about 1.1K tokens) are worth having at
+  hand whenever Go code is explored.
+- **Read-only**, since gopls sends no annotations, which would make every
+  call ask (and its unannotated tools destructive), while none of them
+  writes: `go_rename_symbol` returns the edits for a rename.
+- **Instructions of wisp's**, since gopls sends none over MCP; the text
+  `gopls mcp -instructions` prints insists on `go_vulncheck`, which needs
+  the network. They also note that `go_symbol_references` numbers lines
+  from 0, one less than `read` (gopls v0.23).
+- **Only in a trusted project**, like the project's own `.wisp/mcp.json`,
+  since gopls runs the go command on the project.
+- **Overriding.** An entry named `gopls` in an `mcp.json` replaces it;
+  `{"gopls": {"command": "gopls", "disabled": true}}` turns it off.
+
 ## Approvals
 
 - **Risky by default.** An MCP tool is risky, and goes through the
@@ -124,6 +158,9 @@ can `read` or `grep`.
 - **Hints are only hints.** Annotations come from the server, so a
   misbehaving server can mark a writing tool read-only. Only configure
   servers you trust.
+- **Read-only servers.** `"readOnly": true` in a server's entry makes all
+  its tools read-only, whatever they declare: none asks, even
+  interactively.
 - **Destructive tools always ask.** `--dangerously-skip-permissions` still
   asks before destructive MCP tools: per the spec, any tool that isn't
   read-only and doesn't declare `destructiveHint: false`.

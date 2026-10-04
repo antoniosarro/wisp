@@ -27,13 +27,26 @@ type ServerConfig struct {
 	URL      string            `json:"url"`
 	Headers  map[string]string `json:"headers"`
 	Disabled bool              `json:"disabled"`
+
+	// Direct puts the server's tools in the tool list, as built-in ones
+	// are, instead of behind tool_search and mcp_call: for a server with a
+	// few tools the model uses all the time. They are listed at startup.
+	Direct bool `json:"direct"`
+	// ReadOnly declares the server's tools read-only, so they run without
+	// asking: for a trusted server that sends no annotations, like gopls.
+	ReadOnly bool `json:"readOnly"`
+	// Instructions, when set, replaces what the server sends at startup.
+	Instructions *string `json:"instructions"`
 }
 
-// LoadConfig reads mcp.json files, later ones replacing earlier entries of
-// the same name; missing files are skipped. Disabled servers are dropped
-// and environment variables expanded.
-func LoadConfig(paths ...string) (map[string]ServerConfig, error) {
-	servers := map[string]ServerConfig{}
+// LoadConfig reads mcp.json files over builtin (Builtin), later ones
+// replacing earlier entries of the same name; missing files are skipped.
+// Disabled servers are dropped and environment variables expanded.
+func LoadConfig(builtin map[string]ServerConfig, paths ...string) (map[string]ServerConfig, error) {
+	servers := maps.Clone(builtin)
+	if servers == nil {
+		servers = map[string]ServerConfig{}
+	}
 	for _, path := range paths {
 		file, err := ReadConfig(path)
 		if err != nil {

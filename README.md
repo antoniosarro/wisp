@@ -52,8 +52,9 @@ core and no framework around it.
   directory, and interrupted turns are repaired on resume.
 - **Sub-agents and MCP.** Delegate to agents with their own model and tools,
   and connect MCP servers without paying for their tool lists on every
-  request. A cloned project's own servers and agents run only once you
-  trust it.
+  request. In a Go module with gopls installed, gopls's own MCP server
+  starts by itself for symbol search and references. A cloned project's
+  own servers and agents run only once you trust it.
 - **Tracing.** `--trace` shows every turn, request, tool call, and cost as
   live timelines in the browser.
 - **Plans and progress.** The model can keep a todo list, shown in a side
@@ -160,7 +161,8 @@ A few choices shape the rest
 - **Small windows are the normal case**, so old tool output is masked
   first and summaries are prepared while the server is idle.
 - **The prompt cache is protected**: the tool list never changes mid-session,
-  and MCP tools sit behind two fixed tools.
+  and MCP tools sit behind two fixed tools, except a direct server's (gopls's),
+  which join the list once, at startup.
 - **The server is the source of truth** for the context window and
   capabilities; flags only correct it.
 - **Approvals, not a sandbox**: you see exactly what will run.

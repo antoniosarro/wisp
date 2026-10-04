@@ -32,11 +32,13 @@ func Path(path string) bool {
 	}
 	abs = resolve(abs)
 	if home, err := os.UserHomeDir(); err == nil {
-		// Resolved too: when the home directory is behind a symlink
-		// (/home -> /var/home), resolved paths would never match it.
-		home = resolve(home)
 		for _, dir := range dirs {
-			if rel, err := filepath.Rel(filepath.Join(home, dir), abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			// Resolved too: the home directory may be behind a symlink
+			// (/home -> /var/home), and a dotfiles manager often links a
+			// credential directory itself (~/.ssh -> a checkout), so
+			// resolved paths would never match the literal join.
+			dir = resolve(filepath.Join(home, dir))
+			if rel, err := filepath.Rel(dir, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 				return true
 			}
 		}

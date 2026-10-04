@@ -33,7 +33,9 @@ func Main() int {
 		fmt.Fprintln(os.Stderr, "wisp: interrupted")
 		return 130
 	}
-	fmt.Fprintln(os.Stderr, "wisp:", err)
+	// The error often carries text from the endpoint, e.g. an HTTP error
+	// body: it must not drive the terminal.
+	fmt.Fprintln(os.Stderr, "wisp:", termsafe.Strip(err.Error()))
 	return 1
 }
 

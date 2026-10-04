@@ -135,7 +135,8 @@ func (t *SearchTool) Run(_ context.Context, args json.RawMessage) (tool.Result, 
 	} else {
 		found = exact(all, in.Query)
 		if len(found) == 0 {
-			found = match(all, in.Query, cmp.Or(in.MaxResults, defaultSearchResults))
+			// A model can send a non-positive max_results: use the default.
+			found = match(all, in.Query, cmp.Or(max(in.MaxResults, 0), defaultSearchResults))
 		}
 	}
 

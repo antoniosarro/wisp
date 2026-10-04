@@ -162,7 +162,8 @@ func newLoop(cfg Config, provider *openaicompat.Client, info model.Info, vision 
 	// The window must be set first: summaries are rendered for it.
 	applyModel(loop, vision, info)
 	if err := loop.LoadCompaction(); err != nil {
-		fmt.Fprintf(os.Stderr, "wisp: %v; resuming without the summary\n", err)
+		// The error can quote a stored summary, which is model text.
+		fmt.Fprintf(os.Stderr, "wisp: %s; resuming without the summary\n", termsafe.Strip(err.Error()))
 	}
 	// The recorder writes what's queued before the store closes.
 	return loop, func() { loop.StopPresummary(); loop.Spans.Close(); _ = store.Close(); mcpServers.Close() }, nil
@@ -203,7 +204,9 @@ func connectMCP(workDir string, trusted bool, vision *atomic.Bool, prompter, ask
 	if len(m.Servers()) == 0 {
 		return m, nil, nil
 	}
-	fmt.Fprintf(os.Stderr, "wisp: MCP: %s (%d tools) in %s\n", strings.Join(m.Servers(), ", "), len(m.Tools()), time.Since(start).Round(100*time.Millisecond))
+	// Server names come from the config files, which a repository can
+	// supply: like the trust prompt, they must not drive the terminal.
+	fmt.Fprintf(os.Stderr, "wisp: MCP: %s (%d tools) in %s\n", termsafe.Strip(strings.Join(m.Servers(), ", ")), len(m.Tools()), time.Since(start).Round(100*time.Millisecond))
 	gate := mcp.Gate(prompter, ask)
 	var tools []tool.Tool
 	for _, t := range m.DirectTools() {

@@ -81,7 +81,9 @@ func describeModel(ctx context.Context, catalog model.Catalog, id string) model.
 	defer cancel()
 	info, err := catalog.Describe(ctx, id)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "wisp: could not read details of %s: %v\n", id, err)
+		// id is the user's or the endpoint's, and err may quote the
+		// endpoint: neither may drive the terminal.
+		fmt.Fprintf(os.Stderr, "wisp: could not read details of %s: %s\n", termsafe.Strip(id), termsafe.Strip(err.Error()))
 	}
 	info.ID = id
 	return info

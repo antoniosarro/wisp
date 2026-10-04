@@ -1,0 +1,29 @@
+# Text from the endpoint or a config file must not drive the terminal.
+# An escape sequence in an HTTP error body, or in an MCP server's name,
+# is removed before it reaches stderr.
+
+# An endpoint's error body is printed without its escape sequences.
+fakemodel error.yaml
+! exec wisp 'hi'
+stderr 'bad request'
+! stderr '\x1b'
+
+# An MCP server name comes from a config file, which a repository can
+# supply: it is printed without them too.
+mkdir .config/wisp
+cp mcp.json .config/wisp/mcp.json
+fakemodel model.yaml
+exec wisp 'hi'
+stdout 'hello'
+stderr 'MCP: evilname'
+! stderr '\x1b'
+
+-- error.yaml --
+rules:
+  - reply: {status: 400, error: "bad \x1b[2Jrequest"}
+-- model.yaml --
+rules:
+  - repeat: true
+    reply: {text: hello}
+-- mcp.json --
+{"mcpServers": {"evil\u001b[2Jname": {"command": "fake-mcp"}}}

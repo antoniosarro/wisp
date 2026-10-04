@@ -215,6 +215,14 @@ func TestSearchRanking(t *testing.T) {
 	if res := call(t, reg, SearchToolName, `{"query":"budget zebra"}`); !res.IsError {
 		t.Errorf("server-name words alone should not match: %+v", res)
 	}
+	// A non-positive max_results, which a model can send, must fall back to
+	// the default rather than panic on a negative slice bound.
+	for _, q := range []string{`{"query":"account","max_results":0}`, `{"query":"account","max_results":-1}`} {
+		res := call(t, reg, SearchToolName, q)
+		if !strings.Contains(res.Content, "### mcp__budget__delete_account") {
+			t.Errorf("%s = %+v, want the default number of matches", q, res)
+		}
+	}
 }
 
 type askSpy struct{ asked []string }

@@ -135,10 +135,14 @@ func (s *Store) LoadHistory(sessionID string) ([]model.Message, error) {
 				// Its call was lost with its message's tool calls. Dropping
 				// the result would shift every later message's index, which
 				// compactions and masking store; restore a stand-in call on
-				// the message before instead, so the pair stays valid. With
-				// no assistant message before it to restore one on, the
-				// result can't be sent, and is dropped.
+				// the assistant message the result answers, behind any
+				// results that follow it, so the pair stays valid. With no
+				// assistant message before it to restore one on, the result
+				// can't be sent, and is dropped.
 				last := len(history) - 1
+				for last >= 0 && history[last].Role == model.RoleTool {
+					last--
+				}
 				if last < 0 || history[last].Role != model.RoleAssistant {
 					continue
 				}

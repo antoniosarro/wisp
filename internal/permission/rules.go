@@ -147,14 +147,63 @@ func bashRule(command string) (key, label string) {
 	if len(fields) == 0 || strings.ContainsAny(fields[0], "=/") {
 		return key, label
 	}
-	switch prog := fields[0]; {
+	prog := fields[0]
+	switch {
 	case programScoped[prog], contentReaders[prog] && !reachesCredential(prog, fields[1:]):
 		return "bash:" + prog, prog + " commands"
-	case subcommandPrograms[prog] && len(fields) > 1 && !strings.HasPrefix(fields[1], "-") && !exactSubcommands[fields[1]]:
-		scope := prog + " " + fields[1]
-		return "bash:" + scope, scope + " commands"
+	case subcommandPrograms[prog] && len(fields) > 1 && !strings.HasPrefix(fields[1], "-"):
+		// The subcommand is what the shell passes, not how it was written:
+		// `go "run"` runs go run, so it must cover only itself like run does.
+		if sub, literal := shellArg(fields[1]); literal && !strings.HasPrefix(sub, "-") && !exactSubcommands[sub] {
+			scope := prog + " " + sub
+			return "bash:" + scope, scope + " commands"
+		}
 	}
 	return key, label
+}
+
+// shellArg resolves arg to the word the shell passes to the program,
+// removing quotes and backslash escapes and joining the pieces quoting
+// split it into: the shell reads `cat .e'nv'` as cat .env. It reports false
+// when the word depends on expansion only the shell can resolve, such as a
+// brace alternative, a variable, or a command substitution, since then what
+// it names can't be known from the text.
+func shellArg(arg string) (string, bool) {
+	var b strings.Builder
+	for i := 0; i < len(arg); {
+		switch c := arg[i]; c {
+		case '\'':
+			end := strings.IndexByte(arg[i+1:], '\'')
+			if end < 0 {
+				return "", false
+			}
+			b.WriteString(arg[i+1 : i+1+end])
+			i += end + 2
+		case '"':
+			for i++; i < len(arg) && arg[i] != '"'; i++ {
+				if arg[i] == '\\' && i+1 < len(arg) && strings.IndexByte("$`\"\\\n", arg[i+1]) >= 0 {
+					i++
+				}
+				b.WriteByte(arg[i])
+			}
+			if i >= len(arg) {
+				return "", false
+			}
+			i++ // the closing quote
+		case '\\':
+			if i+1 >= len(arg) {
+				return "", false
+			}
+			b.WriteByte(arg[i+1])
+			i += 2
+		case '{', '}', '$', '`':
+			return "", false
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return b.String(), true
 }
 
 // outsideWorkDir returns path's absolute form, with symlinks resolved,
@@ -257,14 +306,21 @@ func reachesCredential(prog string, args []string) bool {
 			skipOperand = false
 			continue
 		}
-		arg = expandHome(strings.Trim(arg, `'"`))
-		if arg == "" {
-			continue
-		}
-		if strings.ContainsAny(arg, globChars) || credential.Path(arg) {
+		// Resolve the word the shell passes: a quoted or escaped name can
+		// still be a credential. A word that needs expansion names nothing
+		// knowable, so it is treated as reaching one.
+		word, literal := shellArg(arg)
+		if !literal {
 			return true
 		}
-		if info, err := os.Stat(arg); err == nil && info.IsDir() {
+		word = expandHome(word)
+		if word == "" {
+			continue
+		}
+		if strings.ContainsAny(word, globChars) || credential.Path(word) {
+			return true
+		}
+		if info, err := os.Stat(word); err == nil && info.IsDir() {
 			return true
 		}
 	}

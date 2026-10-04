@@ -566,3 +566,37 @@ func TestRepeatingStepsEndTheTurn(t *testing.T) {
 		t.Errorf("history ends with %+v: every call needs a result", last)
 	}
 }
+
+// A truncated response's tool calls are dropped, not run: they must not be
+// persisted without results, since strict backends reject a tool_calls
+// message whose calls have no tool result after it.
+func TestLoopDropsToolCallsOfTruncatedResponse(t *testing.T) {
+	p := &testutil.ScriptedProvider{Turns: [][]model.Event{
+		{
+			{Kind: model.EventToolCall, ToolCall: &model.ToolCall{ID: "call_1", Name: "echo", Args: json.RawMessage(`{"x":1}`)}},
+			{Kind: model.EventDone, Truncated: true},
+		},
+		{{Kind: model.EventTextDelta, Text: "ok"}, {Kind: model.EventDone}},
+	}}
+	l := &Loop{Provider: p, Tools: tool.NewRegistry(testutil.EchoTool{})}
+
+	got, err := l.Run(context.Background(), "run echo")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != "ok" {
+		t.Errorf("answer = %q, want %q", got, "ok")
+	}
+	// user, truncated assistant, reminder, final assistant
+	for _, msg := range l.History {
+		if msg.Role == model.RoleAssistant && len(msg.ToolCalls) > 0 {
+			t.Errorf("history kept an unanswered tool call: %+v", msg)
+		}
+	}
+	// The second request must not carry the dropped call either.
+	for _, msg := range p.LastReq.Messages {
+		if msg.Role == model.RoleAssistant && len(msg.ToolCalls) > 0 {
+			t.Errorf("request carried an unanswered tool call: %+v", msg)
+		}
+	}
+}

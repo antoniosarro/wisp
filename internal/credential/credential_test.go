@@ -47,6 +47,26 @@ func TestName(t *testing.T) {
 	}
 }
 
+// A credential directory that is itself a symlink (dotfiles managers
+// often link ~/.ssh or ~/.gnupg into a checkout) is still recognized, at
+// both the link and its target.
+func TestPathWithACredentialDirectoryBehindASymlink(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	real := t.TempDir()
+	if err := os.WriteFile(filepath.Join(real, "known_hosts"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(home, ".ssh")); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(home, ".ssh", "known_hosts"), filepath.Join(real, "known_hosts")} {
+		if !Path(path) {
+			t.Errorf("Path(%s) = false, want true", path)
+		}
+	}
+}
+
 // With the home directory behind a symlink, as /home -> /var/home is on
 // some distributions, its credential directories are still recognized.
 func TestPathWithHomeBehindASymlink(t *testing.T) {

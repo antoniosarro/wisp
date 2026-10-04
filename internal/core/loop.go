@@ -174,17 +174,24 @@ func (l *Loop) Run(ctx context.Context, userInput string, images ...model.Image)
 			return "", err
 		}
 
-		if err := l.appendAndPersist(model.Message{Role: model.RoleAssistant, Content: text, ToolCalls: toolCalls}); err != nil {
-			return "", err
-		}
-
 		// Cut off at the output limit or in a loop: its tool calls were
 		// dropped, so ask the model to act instead of starting over.
 		if cutoff != "" {
+			// A partial response's calls are unreliable, so they aren't run,
+			// and the history must not keep them either: a call with no
+			// result after it is rejected by strict backends and would make
+			// every later request invalid.
+			if err := l.appendAndPersist(model.Message{Role: model.RoleAssistant, Content: text}); err != nil {
+				return "", err
+			}
 			if err := l.appendReminder(cutoff); err != nil {
 				return "", err
 			}
 			continue
+		}
+
+		if err := l.appendAndPersist(model.Message{Role: model.RoleAssistant, Content: text, ToolCalls: toolCalls}); err != nil {
+			return "", err
 		}
 
 		if len(toolCalls) == 0 {

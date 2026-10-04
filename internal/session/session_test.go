@@ -183,6 +183,35 @@ func TestCorruptToolCallsDoNotBreakResume(t *testing.T) {
 	}
 }
 
+// A message with several tool calls that can't be decoded must still give
+// each of its results a stand-in call: dropping one would shift every later
+// message's index, which masking and compactions store.
+func TestCorruptToolCallsRestoreEveryResult(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	id, _ := s.CreateSession("m")
+	_ = s.AppendMessage(id, model.Message{Role: model.RoleUser, Content: "go"})
+	_ = s.AppendMessage(id, model.Message{Role: model.RoleAssistant, ToolCalls: []model.ToolCall{{ID: "c1", Name: "read"}, {ID: "c2", Name: "read"}}})
+	_ = s.AppendMessage(id, model.Message{Role: model.RoleTool, ToolCallID: "c1", Content: "out1"})
+	_ = s.AppendMessage(id, model.Message{Role: model.RoleTool, ToolCallID: "c2", Content: "out2"})
+	if _, err := s.db.Exec(`UPDATE messages SET tool_calls = '{broken' WHERE role = 'assistant'`); err != nil {
+		t.Fatal(err)
+	}
+	h, err := s.LoadHistory(id)
+	if err != nil || len(h) != 4 {
+		t.Fatalf("history = %+v, %v; want every message kept, indices unchanged", h, err)
+	}
+	if len(h[1].ToolCalls) != 2 || h[1].ToolCalls[0].ID != "c1" || h[1].ToolCalls[1].ID != "c2" {
+		t.Errorf("restored calls = %+v, want both c1 and c2", h[1].ToolCalls)
+	}
+	if h[2].ToolCallID != "c1" || h[3].ToolCallID != "c2" {
+		t.Errorf("results = %+v, want both kept", h[2:])
+	}
+}
+
 func TestOpenMigratesOldDatabase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "old.db")
 	db, err := sql.Open("sqlite", path)

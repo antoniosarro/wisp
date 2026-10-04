@@ -144,6 +144,14 @@ func TestContentReadersDontCoverCredentials(t *testing.T) {
 		"grep KEY -R":                  "this command",
 		"jq . ~/.docker/config.json":   "this command",
 		"ls ~/.ssh":                    "ls commands", // lists names, prints no contents
+		// The shell joins quoted, escaped, and brace-expanded pieces into
+		// one word: the name it reads can be a credential the plain
+		// argument doesn't show. Each covers only itself.
+		"cat .e'nv'":       "this command",
+		`cat .e"nv"`:       "this command",
+		`cat id_"rsa"`:     "this command",
+		`cat .e\nv`:        "this command", // a backslash escape
+		"cat {.env,notes}": "this command", // brace expansion
 	} {
 		if got := RuleLabel("bash", commandArgs(cmd)); got != want {
 			t.Errorf("RuleLabel(bash, %q) = %q, want %q", cmd, got, want)

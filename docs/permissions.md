@@ -60,7 +60,10 @@ disk. What it covers is decided by `permission.RuleKey`:
     print a credential covers only itself, and one run later asks again.
     That is a command with an argument that:
     - names a credential path (`~` expanded, `--opt=value` values
-      included),
+      included; quotes and backslash escapes resolved, so `cat .e'nv'`
+      counts as `.env`),
+    - needs shell expansion only the shell can resolve (a `$`, backtick,
+      or brace alternative), since then what it names isn't knowable,
     - is a glob,
     - or is a directory;
 
@@ -70,7 +73,8 @@ disk. What it covers is decided by `permission.RuleKey`:
   - **One subcommand** for programs that dispatch on one (`git`, `go`,
     `cargo`, `npm`, `pnpm`, `yarn`, `docker`, `podman`, `kubectl`, `gh`,
     `just`, `make`, `systemctl`, `uv`, `pip`, ...): `git status` covers
-    `git status` commands, not `git push`.
+    `git status` commands, not `git push`. The subcommand is read as the
+    shell passes it, so `go "run"` covers only itself, like `go run`.
     - **Exception:** subcommands that run code or change configuration
       cover only the exact command. These are `run`, `exec`, `x`, `dlx`,
       `create`, `init`, `install`, `i`, `add`, `generate`, `tool`,

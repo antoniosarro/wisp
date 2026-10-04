@@ -38,7 +38,8 @@ turn             a user message to the final answer: input, message index
 ├ request        one model request: model, tool choice, tools sent, messages,
 │                input/output/cached tokens, cost, routing, provider, time to
 │                first token, output tokens/s, truncated, reasoning, answer, calls,
-│                context snapshot (wisp.context)
+│                context snapshot (wisp.context), the sentence a response was
+│                stopped for repeating (wisp.repeated)
 ├ request        a summary request (wisp.compaction), named "compact"
 └ tool           one tool call: name, call id, arguments, result, risky,
   │              how it was allowed; status skipped for a repeated call

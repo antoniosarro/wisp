@@ -169,7 +169,7 @@ func (l *Loop) Run(ctx context.Context, userInput string, images ...model.Image)
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		text, toolCalls, truncated, err := l.stepFitting(ctx, "")
+		text, toolCalls, cutoff, err := l.stepFitting(ctx, "")
 		if err != nil {
 			return "", err
 		}
@@ -178,10 +178,10 @@ func (l *Loop) Run(ctx context.Context, userInput string, images ...model.Image)
 			return "", err
 		}
 
-		// Cut off at the output limit: its tool calls were dropped, so
-		// ask the model to act instead of starting over.
-		if truncated {
-			if err := l.appendReminder(truncatedReminder); err != nil {
+		// Cut off at the output limit or in a loop: its tool calls were
+		// dropped, so ask the model to act instead of starting over.
+		if cutoff != "" {
+			if err := l.appendReminder(cutoff); err != nil {
 				return "", err
 			}
 			continue
@@ -338,16 +338,16 @@ func (l *Loop) Messages() []model.Message {
 
 // stepFitting runs step, first masking old tool output when the request
 // would take History past the mask trigger, and summarizing it (with
-// AutoCompact) when masking leaves it past the summarize trigger (Fit).
+// AutoCompact) when masking leaves it past the mask trigger (Fit).
 // When the backend rejects a request as too long anyway, it learns the
 // window from the error if the server states it, then retries after each
 // of: masking down to the target, masking everything it can, and
 // summarizing.
-func (l *Loop) stepFitting(ctx context.Context, toolChoice string) (string, []model.ToolCall, bool, error) {
+func (l *Loop) stepFitting(ctx context.Context, toolChoice string) (string, []model.ToolCall, string, error) {
 	if err := l.Fit(ctx); err != nil {
-		return "", nil, false, err
+		return "", nil, "", err
 	}
-	text, calls, truncated, err := l.step(ctx, toolChoice)
+	text, calls, cutoff, err := l.step(ctx, toolChoice)
 	for attempt := 0; attempt < 3 && errors.Is(err, model.ErrContextOverflow); attempt++ {
 		if window := windowFromError(err); window > 0 {
 			l.ContextWindow = window
@@ -363,41 +363,51 @@ func (l *Loop) stepFitting(ctx context.Context, toolChoice string) (string, []mo
 			changed = l.AutoCompact && l.Compact(ctx, "") == nil
 		}
 		if ctx.Err() != nil {
-			return "", nil, false, ctx.Err()
+			return "", nil, "", ctx.Err()
 		}
 		if changed {
-			text, calls, truncated, err = l.step(ctx, toolChoice)
+			text, calls, cutoff, err = l.step(ctx, toolChoice)
 		}
 	}
 	if errors.Is(err, model.ErrContextOverflow) {
 		err = fmt.Errorf("%w; the conversation no longer fits, start a new session", err)
 	}
-	return text, calls, truncated, err
+	return text, calls, cutoff, err
 }
 
 // step streams one provider response and returns its answer text, tool
-// calls, and whether it was cut off at the output-token limit. toolChoice
-// is sent only with tools: "none" forbids calls, "" leaves it to the model.
-// The request is traced as a span of the turn (trace.go).
-func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model.ToolCall, truncated bool, err error) {
+// calls, and, for a response cut off, the reminder asking the model to act:
+// at the output-token limit, or once its reasoning kept repeating a
+// sentence (repeat.go), which stops the stream. toolChoice is sent only with tools:
+// "none" forbids calls, "" leaves it to the model. The request is traced as
+// a span of the turn (trace.go).
+func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model.ToolCall, cutoff string, err error) {
 	req := model.Request{Messages: l.Messages(), Tools: l.requestTools(), Effort: l.Effort, MaxTokens: l.replyCap()}
 	if req.Tools != nil {
 		req.ToolChoice = toolChoice
 	}
 	ctx, sp := l.startRequestSpan(ctx, req)
 	defer func() { sp.EndErr(ctx, err) }()
+	streamCtx, stopStream := context.WithCancel(ctx)
+	defer stopStream()
 
 	start := time.Now()
-	events, err := l.Provider.Stream(ctx, req)
+	events, err := l.Provider.Stream(streamCtx, req)
 	if err != nil {
-		return "", nil, false, fmt.Errorf("starting stream: %w", err)
+		return "", nil, "", fmt.Errorf("starting stream: %w", err)
 	}
 
 	var text, reasoning, toolCallText strings.Builder
 	var toolCalls []model.ToolCall
 	var usage *model.Usage
 	var firstToken time.Duration
+	var truncated bool
+	var watch repeatWatch
+	repeated := ""
 	for e := range events {
+		if repeated != "" {
+			continue // the stopped stream is closing
+		}
 		if l.OnEvent != nil {
 			l.OnEvent(e)
 		}
@@ -409,6 +419,7 @@ func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model
 			text.WriteString(e.Text)
 		case model.EventReasoningDelta:
 			reasoning.WriteString(e.Reasoning)
+			repeated = watch.add(e.Reasoning)
 		case model.EventReclassify:
 			// The text so far was reasoning, not the answer.
 			reasoning.WriteString(text.String())
@@ -422,12 +433,15 @@ func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model
 		case model.EventDone:
 			usage, truncated = e.Usage, e.Truncated
 		case model.EventError:
-			return "", nil, false, fmt.Errorf("stream error: %w", e.Err)
+			return "", nil, "", fmt.Errorf("stream error: %w", e.Err)
+		}
+		if repeated != "" {
+			stopStream()
 		}
 	}
 	// A cancelled stream closes without EventDone or EventError.
 	if err := ctx.Err(); err != nil {
-		return "", nil, false, err
+		return "", nil, "", err
 	}
 
 	if usage != nil {
@@ -442,7 +456,15 @@ func (l *Loop) step(ctx context.Context, toolChoice string) (_ string, _ []model
 	}
 	l.recordStats(r)
 	l.endRequestSpan(sp, r, firstToken, toolCalls, truncated)
-	return text.String(), toolCalls, truncated, nil
+	switch {
+	case repeated != "":
+		// The loop and any calls before it are dropped, as at the limit.
+		sp.Set("wisp.repeated", repeated)
+		return "", nil, repeatReminder(repeated), nil
+	case truncated:
+		return text.String(), toolCalls, truncatedReminder, nil
+	}
+	return text.String(), toolCalls, "", nil
 }
 
 // dispatchAndAppend appends one tool-role message per call, in request order.

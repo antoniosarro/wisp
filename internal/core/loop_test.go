@@ -322,6 +322,54 @@ func (c countingTool) Run(_ context.Context, args json.RawMessage) (tool.Result,
 	return tool.Result{Content: c.name + " " + string(args)}, nil
 }
 
+// endlessProvider streams one sentence over and over until its context
+// ends, as a model stuck in a loop does, then answers the next request.
+type endlessProvider struct {
+	sentence string
+	calls    int
+	stopped  bool // the looping stream saw its context end
+}
+
+func (p *endlessProvider) Stream(ctx context.Context, _ model.Request) (<-chan model.Event, error) {
+	p.calls++
+	ch := make(chan model.Event)
+	go func() {
+		defer close(ch)
+		if p.calls > 1 {
+			ch <- model.Event{Kind: model.EventTextDelta, Text: "done"}
+			ch <- model.Event{Kind: model.EventDone}
+			return
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				p.stopped = true
+				return
+			case ch <- model.Event{Kind: model.EventReasoningDelta, Reasoning: p.sentence + "\n\n"}:
+			}
+		}
+	}()
+	return ch, nil
+}
+
+// A response that keeps repeating a sentence is stopped, and the model is
+// told to act, instead of streaming until the output limit.
+func TestRepeatingResponseIsStopped(t *testing.T) {
+	p := &endlessProvider{sentence: "OK, I'll run the grep and read the test file now."}
+	l := &Loop{Provider: p}
+	answer, err := l.Run(context.Background(), "go")
+	if err != nil || answer != "done" {
+		t.Fatalf("answer %q, err %v", answer, err)
+	}
+	if !p.stopped {
+		t.Error("the looping stream was left running")
+	}
+	want := ReminderPrefix + repeatReminder(p.sentence)
+	if !slices.ContainsFunc(l.History, func(m model.Message) bool { return m.Content == want }) {
+		t.Errorf("no reminder %q in history", want)
+	}
+}
+
 // A result masked or compacted away is out of view, so its call runs again,
 // as the stub says to, instead of getting RepeatedCallContent.
 func TestOutOfViewCallsRunAgain(t *testing.T) {

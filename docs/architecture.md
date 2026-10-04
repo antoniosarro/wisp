@@ -90,6 +90,12 @@ sequenceDiagram
 - **Repeating steps.** A step with exactly the calls of the one before
   gets a note; a third in a row ends the turn
   ([tools.md](tools.md#dispatch)).
+- **Repeating responses.** A response whose reasoning says the same
+  sentence 8 times (`repeat.go`; lines of code and sentences under 20
+  characters don't count) is stopped mid-stream, as models stuck that way
+  announce an action again and again without making the call until the
+  output limit. Its text and calls are dropped, and a reminder quoting the
+  sentence tells the model to act, as after a response cut off at the limit.
 - **The step limit.** After 100 round trips without a final answer
   (`--max-iterations`), the model is asked for a summary of its progress
   without tools, and that ends the turn.

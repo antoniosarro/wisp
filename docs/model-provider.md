@@ -78,7 +78,9 @@ Ollama, LM Studio) and hosted OpenAI-compatible APIs such as OpenRouter.
 - **Truncation.** A response cut off at the output limit
   (`finish_reason=length`) keeps its text and drops its tool calls, whose
   arguments may be incomplete. The loop continues with a reminder to act
-  rather than restart.
+  rather than restart. The loop also cancels a stream that keeps repeating
+  a sentence ([architecture.md](architecture.md)): the provider then
+  closes the channel, as for any cancelled stream.
 - **Failures.** These all end the response with an error:
   - an error chunk (`{"error": ...}`) inside the stream
   - any other `finish_reason`, e.g. `content_filter`

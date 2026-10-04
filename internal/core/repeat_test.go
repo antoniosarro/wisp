@@ -17,6 +17,8 @@ func TestRepeatWatch(t *testing.T) {
 		{name: "a sentence ending mid-line", stream: strings.Repeat(loop+" Let me check. ", 30), want: loop, at: repeatLimit},
 		{name: "spacing differs", stream: strings.Repeat("Let me find  the go\tmodule cache path.\n", 4) + strings.Repeat(loop+"\n", 4), want: loop, at: repeatLimit},
 		{name: "a line of code quoted again", stream: strings.Repeat("return filepath.Join(real, rest)\nfor dir := path; ; dir = filepath.Dir(dir) {\n", 30)},
+		{name: "a code line split at a colon", stream: strings.Repeat(`return tool.Result{Content: fmt.Sprintf("sub-agent %s failed: %v", spec.Name, err), IsError: true}, nil`+"\n", 30)},
+		{name: "a sentence starting lowercase", stream: strings.Repeat("then the context is cancelled before the call returns.\n", 30)},
 		{name: "a short filler", stream: strings.Repeat("Let me check.\n", 30)},
 		{name: "two sentences, each under the limit", stream: strings.Repeat(loop+"\nOK, I'll run the grep and read the test file now.\n", repeatLimit-1)},
 	} {

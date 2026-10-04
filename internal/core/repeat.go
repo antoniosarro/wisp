@@ -10,7 +10,7 @@ import (
 // repeatLimit is how often one sentence may recur in a response's
 // reasoning before it counts as a loop. Models stuck that way announce an
 // action again and again ("Let me run the tests now.") without making the
-// call, until the output limit. On recorded responses, 8 caught 10 of 13
+// call, until the output limit. On recorded responses, 8 caught 10 of 14
 // that ran into the limit, and stopped none that ended on their own except
 // other such loops.
 const repeatLimit = 8
@@ -20,7 +20,10 @@ const repeatLimit = 8
 const minRepeatLen = 20
 
 // codeLine matches a line of code. Reasoning quotes the same line again as
-// it works through it, so code doesn't count as repetition.
+// it works through it, so code doesn't count as repetition. Neither does a
+// sentence that doesn't start with a capital letter: a quoted line split at
+// ": " leaves pieces like `%v", name, err), IsError:` that look like prose
+// to codeLine, while the loops seen all start like one ("Let me…").
 var codeLine = regexp.MustCompile(`[{};]|:=|==|!=|&&|\|\||<-|\w\(|^(return|case|func|if|for|go|defer|var|const|type|package|import)\b|^//|^_ =`)
 
 // repeatWatch finds a sentence that recurs repeatLimit times in a response's
@@ -63,7 +66,7 @@ func (w *repeatWatch) add(s string) string {
 // repeatLimit.
 func (w *repeatWatch) count(sentence string) string {
 	sentence = strings.Join(strings.Fields(sentence), " ")
-	if len(sentence) < minRepeatLen || codeLine.MatchString(sentence) {
+	if len(sentence) < minRepeatLen || sentence[0] < 'A' || sentence[0] > 'Z' || codeLine.MatchString(sentence) {
 		return ""
 	}
 	if w.counts == nil {

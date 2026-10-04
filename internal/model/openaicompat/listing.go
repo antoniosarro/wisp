@@ -30,8 +30,9 @@ type listEntry struct {
 	Meta          *struct {
 		NCtxTrain int `json:"n_ctx_train"`
 		LlamaSwap *struct {
-			ContextLength int `json:"context_length"`
-		} `json:"llamaswap"` // llama-swap
+			ContextLength       int `json:"context_length"`
+			MaxCompletionTokens int `json:"max_completion_tokens"`
+		} `json:"llamaswap"` // llama-swap: the model's metadata block in its config
 	} `json:"meta"` // llama.cpp, llama-swap
 	Architecture *struct {
 		InputModalities  []string `json:"input_modalities"`
@@ -62,6 +63,9 @@ func (e listEntry) info() model.Info {
 		info.MaxContext = m.NCtxTrain
 		if m.LlamaSwap != nil {
 			info.ContextWindow = cmp.Or(info.ContextWindow, m.LlamaSwap.ContextLength)
+			// llama-server's --n-predict yields to a request's max_tokens,
+			// so a cap the config sets has to come from the client.
+			info.MaxOutput = m.LlamaSwap.MaxCompletionTokens
 		}
 	}
 	if p := e.TopProvider; p != nil {

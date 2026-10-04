@@ -41,6 +41,12 @@ from the `/models` listing and from local servers' native endpoints
 - **The window** drives the context budget ([compaction.md](compaction.md))
   and the TUI's usage bar. Ollama and LM Studio report it only once a model
   is loaded, so the TUI asks again after the first turn.
+- **The output cap** bounds each reply's `max_tokens` (32K at most). It comes
+  from OpenRouter's `top_provider.max_completion_tokens` or, for
+  llama-swap, a `max_completion_tokens` key in the model's `metadata`
+  (next to `context_length`). llama-server's `--n-predict` isn't one: a
+  request's `max_tokens` overrides it, so a cap meant for every client
+  belongs in the metadata.
 - **A model that can't call tools** runs without tools.
 - **Vision** lets `read` send images (PNG, JPEG, GIF, WebP up to 10 MB).
 - **Reasoning effort levels** are what `/effort` offers. A llama.cpp chat

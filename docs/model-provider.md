@@ -137,7 +137,9 @@ values mean the server didn't say.
   add fields of their own:
   - vLLM and SGLang: `max_model_len`
   - llama.cpp: `meta.n_ctx_train` and a `models[].capabilities` list
-  - llama-swap: `meta.llamaswap.context_length`
+  - llama-swap: `meta.llamaswap.context_length` and
+    `meta.llamaswap.max_completion_tokens`, from each model's `metadata`
+    in its config
   - OpenRouter: `context_length`, `architecture` modalities,
     `supported_parameters`, `reasoning`, `top_provider.max_completion_tokens`,
     and `pricing`

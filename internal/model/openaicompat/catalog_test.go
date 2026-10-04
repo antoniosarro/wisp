@@ -42,6 +42,14 @@ func TestDescribeByServer(t *testing.T) {
 			want: model.Info{ID: "coder-35b", ContextWindow: 131072},
 		},
 		{
+			name: "llama-swap with an output cap in its metadata",
+			routes: map[string]string{
+				"GET /v1/models": `{"data":[{"id":"coder-35b","owned_by":"llama-swap","meta":{"llamaswap":{"context_length":131072,"max_completion_tokens":16384}}}]}`,
+			},
+			id:   "coder-35b",
+			want: model.Info{ID: "coder-35b", ContextWindow: 131072, MaxOutput: 16384},
+		},
+		{
 			name: "llama.cpp with a reasoning template",
 			routes: map[string]string{
 				"GET /v1/models": `{"data":[{"id":"gpt-oss","owned_by":"llamacpp"}]}`,
@@ -54,13 +62,13 @@ func TestDescribeByServer(t *testing.T) {
 		{
 			name: "llama-swap, model running",
 			routes: map[string]string{
-				"GET /v1/models": `{"data":[{"id":"coder-35b","owned_by":"llama-swap","meta":{"llamaswap":{"context_length":131072}}}]}`,
+				"GET /v1/models": `{"data":[{"id":"coder-35b","owned_by":"llama-swap","meta":{"llamaswap":{"context_length":131072,"max_completion_tokens":16384}}}]}`,
 				"GET /running":   `{"running":[{"model":"other","state":"ready"},{"model":"coder-35b","state":"ready"}]}`,
 				"GET /upstream/coder-35b/props": `{"default_generation_settings":{"n_ctx":131072},
 					"chat_template":"enable_thinking","chat_template_caps":{"supports_tool_calls":true}}`,
 			},
 			id:   "coder-35b",
-			want: model.Info{ID: "coder-35b", ContextWindow: 131072, Tools: model.Supported, Reasoning: model.Supported, Efforts: model.EffortsReported | model.EffortsOf("none"), Loaded: true},
+			want: model.Info{ID: "coder-35b", ContextWindow: 131072, MaxOutput: 16384, Tools: model.Supported, Reasoning: model.Supported, Efforts: model.EffortsReported | model.EffortsOf("none"), Loaded: true},
 		},
 		{
 			// Asking its server would load it.
